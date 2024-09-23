@@ -19,7 +19,8 @@
 enum DrawMode {
     LineMode,
     ArcMode,
-    CircleMode
+    CircleMode,
+    PolygonMode,
 };
 
 // 线段绘制算法
@@ -53,6 +54,39 @@ struct Arc{
 
     Arc(QPoint p, int r, int sa, int ea, int w, QColor c) :center(p), radius(r), startAngle(sa), endAngle(ea), width(w), colour(c){}
 };
+
+// 结构体来存储每个点的信息，为多边形绘制服务
+struct Point{
+    int x, y;
+    Point(int x = 0, int y = 0) : x(x), y(y) {}
+};
+
+// 结构体来存储多边形每个边的信息，为多边形绘制服务
+struct Edge {
+    int yMax;
+    float xMin, slopeReciprocal;
+};
+
+class Polygon {
+public:
+    std::vector<Point> points; // 储存多边形的顶点
+    Polygon() {}
+
+    void addPoint(const Point& point) {
+        points.push_back(point);
+    }
+
+    bool isClosed() const {
+        return points.size() > 2 && points.front().x == points.back().x && points.front().y == points.back().y;
+    }
+
+    void closePolygon() {
+        if (points.size() > 2 && !isClosed()) {
+            points.push_back(points.front()); // 封闭多边形
+        }
+    }
+};
+
  
 
 class ShapeDrawer : public QWidget {
@@ -76,6 +110,11 @@ private:
 
     QVector<Arc> arcs;          // 存储已绘制的直线段
     QVector<Line> lines;        // 存储已绘制的直线段
+
+    //std::vector<Point> points; // 存储多边形顶点
+    //bool polygonClosed = false; // 标记多边形是否封闭
+    std::vector<Polygon> polygons; // 存储多个多边形
+    Polygon currentPolygon; // 当前正在绘制的多边形
 
 protected:
     // 重写绘制事件
@@ -128,7 +167,25 @@ protected:
                 //// 绘制圆弧
                 //painter.drawArc(boundingRect, startAngle16, spanAngle16);//！！！！！！会清屏！！！！！！
             }
-            
+        }
+
+        // 画出所有已经存储的多边形
+        for (const Polygon& polygon : polygons) {
+            if (polygon.points.size() > 1) {
+                for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
+                    painter.drawLine(polygon.points[i].x, polygon.points[i].y, polygon.points[i + 1].x, polygon.points[i + 1].y);
+                }
+            }
+            if (polygon.isClosed()) {
+                scanlineFill(painter, polygon);
+            }
+        }
+
+        // 绘制当前正在创建的多边形
+        if (currentPolygon.points.size() > 1) {
+            for (size_t i = 0; i < currentPolygon.points.size() - 1; ++i) {
+                painter.drawLine(currentPolygon.points[i].x, currentPolygon.points[i].y, currentPolygon.points[i + 1].x, currentPolygon.points[i + 1].y);
+            }
         }
 
         // 如果有起点，绘制线段的预览
@@ -224,6 +281,8 @@ protected:
             //    painter.drawArc(boundingRect, startAngle16, spanAngle16);
             //}
         }
+
+        
     }
 
     // DDA 算法实现
@@ -411,6 +470,44 @@ protected:
         }
     }
 
+    // 扫描线算法
+    void scanlineFill(QPainter& painter, const Polygon& polygon) {
+        if (polygon.points.size() < 3) return;
+
+        // 计算最小和最大 y 坐标
+        int ymin = polygon.points[0].y, ymax = polygon.points[0].y;
+        for (const Point& p : polygon.points) {
+            ymin = std::min(ymin, p.y);
+            ymax = std::max(ymax, p.y);
+        }
+
+        // 对每条扫描线从 ymin 到 ymax 进行处理
+        for (int y = ymin; y <= ymax; ++y) {
+            std::vector<int> intersections;
+
+            // 计算每条边与当前扫描线的交点
+            for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
+                const Point& p1 = polygon.points[i];
+                const Point& p2 = polygon.points[i + 1];
+
+                if ((p1.y <= y && p2.y > y) || (p1.y > y && p2.y <= y)) {
+                    int x = p1.x + (y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+                    intersections.push_back(x);
+                }
+            }
+
+            // 对交点进行排序
+            std::sort(intersections.begin(), intersections.end());
+
+            // 画出交点之间的线段
+            for (size_t i = 0; i < intersections.size(); i += 2) {
+                painter.drawLine(intersections[i], y, intersections[i + 1], y);
+            }
+        }
+    }
+
+
+
     // 处理鼠标按下事件
     void mousePressEvent(QMouseEvent* event) override {
         if (!hasStartPoint) {
@@ -433,6 +530,13 @@ protected:
                 if (startAngle < 0) {
                     startAngle += 360;  // 确保角度为正
                 }
+            }
+            else if (mode == PolygonMode) {
+                // 获取鼠标点击的位置
+                int x = event->pos().x();
+                int y = event->pos().y();
+                currentPolygon.addPoint(Point(x, y)); // 添加顶点
+                update(); // 触发界面重绘
             }
             
             hasStartPoint = true;
@@ -507,6 +611,19 @@ protected:
         }
     }
 
+    void mouseDoubleClickEvent(QMouseEvent* event) override {
+        // 双击事件封闭当前多边形
+        if (mode == PolygonMode) {
+            if (currentPolygon.points.size() > 2) {
+                currentPolygon.closePolygon(); // 封闭当前多边形
+                polygons.push_back(currentPolygon); // 保存到多边形列表
+                currentPolygon = Polygon(); // 重置当前多边形以开始新的绘制
+                update();
+            }
+        }
+        
+    }
+
 public:
     ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false), 
         radius(0), startAngle(0), endAngle(360)
@@ -578,6 +695,7 @@ public:
         modeComboBox->addItem("Circle", CircleMode);
         modeComboBox->addItem("Arc", ArcMode);
         //modeComboBox->addItem("ArcPlus", ArcModePlus);
+        modeComboBox->addItem("Shape", PolygonMode);
 
         // 创建下拉框并添加算法选项
         algorithmComboBox = new QComboBox(this);
@@ -654,7 +772,7 @@ public:
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-
+    
     MainWindow window;
     window.show();
 
