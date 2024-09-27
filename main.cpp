@@ -7,13 +7,35 @@
 #include <QVBoxLayout>
 #include <QSlider>
 #include <QLabel>
-#include <QPainter>
 #include <QPen>
 #include <cmath>
 #include <QInputDialog>
+#include <vector>
 #include "stdafx.h"
+using namespace std;
+
 //TODO:圆弧的 360 与 0 的交界处功能未完善
 //TODO:起始角 大于 结束角 功能为完善
+
+// 用于实现填充（ pointData 与 MAP ）
+class pointData {
+protected:
+    QPoint pos;
+    QColor color;
+public:
+    pointData(QPoint p, QColor c) {
+        pos = p;
+        color = c;
+    }
+    QColor getColor() {
+        return color;
+    }
+    void setColor(QColor c) {
+        color = c;
+    }
+};
+
+void initMAP(vector<vector<pointData>>& MAP);
 
 // 功能类型：直线或圆弧
 enum DrawMode {
@@ -93,6 +115,7 @@ class ShapeDrawer : public QWidget {
     // Q_OBJECT;
 private:
     DrawMode mode;              // 当前绘制模式：直线 或 圆弧
+    vector<vector<pointData>> MAP;
 
     int lineWidth = 5;          // 存储线条宽度
     bool hasStartPoint = false; // 是否有起点（用于直线或圆弧）
@@ -140,7 +163,7 @@ protected:
                 drawMidpointLine(painter, line.line.p1(), line.line.p2());
                 break;
             case DashLine:
-                drawDashLine(painter, startPoint, endPoint);
+                drawDashLine(painter, line.line.p1(), line.line.p2());
                 break;
             }
         }
@@ -155,17 +178,8 @@ protected:
                 drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, arc.endAngle);
             }
             else {
-                //TODO:未完善↓
                 drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, 360);
                 drawMidpointArc(painter, arc.center, arc.radius, 0, arc.endAngle);
-                // 计算起始角度和扫过的角度（以 16 倍角度传递）
-                //int startAngle16 = arc.startAngle * 16;
-                //int spanAngle16 = calculateSpanAngle(arc.startAngle, arc.endAngle) * 16;
-
-                //QRectF boundingRect(center.x() - radius, center.y() - radius, radius * 2, radius * 2);
-
-                //// 绘制圆弧
-                //painter.drawArc(boundingRect, startAngle16, spanAngle16);//！！！！！！会清屏！！！！！！
             }
         }
 
@@ -223,16 +237,7 @@ protected:
                     drawMidpointArc(painter, center, radius, 0, endAngle);
                 }
             }
-            //else if (mode == ArcModePlus) {
-            //    // 计算起始角度和扫过的角度（以 16 倍角度传递）
-            //    int startAngle16 = startAngle * 16;
-            //    int spanAngle16 = calculateSpanAngle(startAngle, endAngle) * 16;
 
-            //    QRectF boundingRect(center.x() - radius, center.y() - radius, radius * 2, radius * 2);
-
-            //    // 绘制圆弧
-            //    painter.drawArc(boundingRect, startAngle16, spanAngle16);
-            //}
         }
 
         // 如果有起点和终点，绘制实际线段
@@ -269,21 +274,30 @@ protected:
                     drawMidpointArc(painter, center, radius, 0, endAngle);
                 }
             }
-            //else if (mode == ArcModePlus)
-            //{
-            //    // 计算起始角度和扫过的角度（以 16 倍角度传递）
-            //    int startAngle16 = startAngle * 16;
-            //    int spanAngle16 = calculateSpanAngle(startAngle, endAngle) * 16;
 
-            //    QRectF boundingRect(center.x() - radius, center.y() - radius, radius * 2, radius * 2);
-
-            //    // 绘制圆弧
-            //    painter.drawArc(boundingRect, startAngle16, spanAngle16);
-            //}
         }
 
         
     }
+
+    // 判定是否出界，暂时没用
+    bool checkLegalPos(int x, int y, int width, int height) {
+        if (x >= 0 && x <= width && y >= 0 && y <= height) {
+            return true;
+        }
+        else
+            return false;
+    }
+
+    // 绘制像素点与 MAP 对应的像素数据
+    void drawPixel(int x, int y, QPainter& painter) {
+
+        //不使用笔刷
+        if (checkLegalPos(x, y, 800, 550)) {
+            painter.drawPoint(x, y);
+            MAP[x][y].setColor(painter.pen().color());
+        }
+    };
 
     // DDA 算法实现
     void drawDDALine(QPainter& painter, QPoint p1, QPoint p2) {
@@ -296,7 +310,7 @@ protected:
         float x = p1.x();
         float y = p1.y();
         for (int i = 0; i <= steps; ++i) {
-            painter.drawPoint(static_cast<int>(x), static_cast<int>(y));
+            drawPixel(static_cast<int>(x), static_cast<int>(y),painter);
             x += xIncrement;
             y += yIncrement;
         }
@@ -315,7 +329,7 @@ protected:
         int err = dx - dy;
 
         while (x1 != x2 || y1 != y2) {
-            painter.drawPoint(x1, y1);
+            drawPixel(x1, y1,painter);
             int e2 = 2 * err;
             if (e2 > -dy) {
                 err -= dy;
@@ -341,7 +355,7 @@ protected:
         int delta_x = (dx >= 0 ? 1 : (dx = -dx, -1));	//若dx>0则步长为1，否则为-1，同时dx变正
         int delta_y = (dy <= 0 ? 1 : (dy = -dy, -1));	//注意这里dy<0,才是画布中y的增长方向
 
-        painter.drawPoint(x, y);		//画起始点
+        drawPixel(x, y,painter);		//画起始点
 
         int d, incrE, incrNE;
         if (-dy <= dx)		// 斜率绝对值 <= 1
@@ -357,7 +371,7 @@ protected:
                 else
                     d += incrE;
                 x += delta_x;
-                painter.drawPoint(x, y);
+                drawPixel(x, y, painter);
             }
         }
         else				// 斜率绝对值 > 1
@@ -373,7 +387,7 @@ protected:
                 else
                     x += delta_x, d += incrNE;
                 y += delta_y;
-                painter.drawPoint(x, y);
+                drawPixel(x, y, painter);
             }
         }
     }
@@ -399,7 +413,7 @@ protected:
         while (x1 != x2 || y1 != y2) {
             // 只在虚线的部分绘制点
             if (stepCount % totalLength < dashLength) {
-                painter.drawPoint(x1, y1);
+                drawPixel(x1, y1, painter);
             }
 
             int e2 = 2 * err;
@@ -415,14 +429,6 @@ protected:
             stepCount++;  // 增加步数计数器
         }
     }
-
-    //int calculateSpanAngle(int startAngle, int endAngle) {
-    //    int spanAngle = endAngle - startAngle;
-    //    if (spanAngle < 0) {
-    //        spanAngle += 360;
-    //    }
-    //    return spanAngle;
-    //}
 
     // 中点圆弧算法实现
     void drawMidpointArc(QPainter& painter, QPoint center, int radius, int startAngle, int endAngle) {
@@ -602,15 +608,12 @@ protected:
                     endAngle += 360;  // 确保角度为正
                 }
             }
-            //else if (mode == ArcModePlus) {
-            //    QPoint currentPos = event->pos();
-            //    radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
-            //}
 
             update(); // 触发重绘
         }
     }
 
+    // 处理双击鼠标事件
     void mouseDoubleClickEvent(QMouseEvent* event) override {
         // 双击事件封闭当前多边形
         if (mode == PolygonMode) {
@@ -625,7 +628,7 @@ protected:
     }
 
 public:
-    ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false), 
+    ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false),
         radius(0), startAngle(0), endAngle(360)
     {
         // 设置背景颜色
@@ -636,6 +639,7 @@ public:
 
         // 绘图窗口大小↓
         setFixedSize(800, 550);
+        initMAP(MAP);
     }
     
 
@@ -694,7 +698,6 @@ public:
         modeComboBox->addItem("Line", LineMode);
         modeComboBox->addItem("Circle", CircleMode);
         modeComboBox->addItem("Arc", ArcMode);
-        //modeComboBox->addItem("ArcPlus", ArcModePlus);
         modeComboBox->addItem("Shape", PolygonMode);
 
         // 创建下拉框并添加算法选项
@@ -769,10 +772,22 @@ public:
     }
 };
 
+void initMAP(vector<vector<pointData>>& MAP) {
+    for (int i = 0; i < 1000; i++) {
+        vector<pointData> row;
+        MAP.push_back(row);
+        for (int j = 0; j < 1000; j++) {
+            //对每一行中的每一列进行添加点
+            pointData point(QPoint(i, j), Qt::white);
+            MAP[i].push_back(point);
+        }
+    }
+}
+
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    
+
     MainWindow window;
     window.show();
 
