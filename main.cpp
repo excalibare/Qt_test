@@ -34,7 +34,8 @@ public:
 	}
 };
 
-void initMAP(vector<vector<pointData>>& MAP);
+void initMAP(vector<vector<pointData>>& MAP); 
+void clearMAP(vector<vector<pointData>>& MAP);
 
 // 功能类型：直线或圆弧
 enum DrawMode {
@@ -161,7 +162,7 @@ protected:
 	{
 		// 各类图形的计数器，控制从vector中取出的顺序
 		int i1 = 0, i2 = 0, i3 = 0, i4 = 0;
-
+		clearMAP(MAP);
 		QPainter painter(this);
 
 		// 每次刷新的时候重新绘制已存在直线
@@ -327,6 +328,7 @@ protected:
 		//不使用笔刷
 		if (checkLegalPos(x, y, 800, 550)) {
 			painter.drawPoint(x, y);
+			// qDebug() << x << " " << y;
 			MAP[x][y].setColor(painter.pen().color());
 		}
 	};
@@ -544,19 +546,17 @@ protected:
 		}
 	}
 
-	void regionFillUp(QPainter& painter, Point curFillPoint, QColor curFillColor) {
-		int limit = 800;
+	void regionFillDown(QPainter& painter, Point curFillPoint, QColor curFillColor) {
+		int limit = 799;
 
-		if (curFillPoint.Gety() >= 600 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 800 || curFillPoint.Getx() < 0) return;
-		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()].getColor();
+		if (curFillPoint.Gety() >= 549 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 799 || curFillPoint.Getx() < 0) return;
+		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()+1].getColor();
 		if (oldColor == curFillColor) return;
-
+		
 		int xr, x, y;
-		x = curFillPoint.Getx();
-		y = curFillPoint.Gety();
 		bool spanNeedFill = false;
 		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
-		y = pt.Gety();
+		y = pt.Gety()+1;
 		x = pt.Getx();
 		
 		while (MAP[x][y].getColor() == oldColor && x < limit) {
@@ -571,19 +571,20 @@ protected:
 		}
 		pt.x = curFillPoint.Getx();
 		pt.y = curFillPoint.Gety() + 1;
-		regionFillUp(painter, pt, curFillColor);
+		regionFillDown(painter, pt, curFillColor);
 	}
 
-	void regionFillDown(QPainter& painter, Point curFillPoint, QColor curFillColor) {
-		int limit = 800;
+	void regionFillUp(QPainter& painter, Point curFillPoint, QColor curFillColor) {
+		int limit = 799;
 
-		if (curFillPoint.Gety() >= 600 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 800 || curFillPoint.Getx() < 0) return;
+		if (curFillPoint.Gety() >= 549 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 799 || curFillPoint.Getx() < 0) return;
 		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()].getColor();
 		if (oldColor == curFillColor) return;
 
 		int xr, x, y;
 		x = curFillPoint.Getx();
 		y = curFillPoint.Gety();
+		
 		bool spanNeedFill = false;
 		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
 		y = pt.Gety();
@@ -641,7 +642,6 @@ protected:
 			}
 			else if (mode == FillMode) {
 				fills.push_back(Fill(Point(event->pos().x(), event->pos().y()), currentLineColor));
-				
 				shape.push_back(4);
 			}
 
@@ -869,13 +869,21 @@ public:
 };
 
 void initMAP(vector<vector<pointData>>& MAP) {
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < 800; i++) {
 		vector<pointData> row;
 		MAP.push_back(row);
-		for (int j = 0; j < 1000; j++) {
+		for (int j = 0; j < 550; j++) {
 			//对每一行中的每一列进行添加点
 			pointData point(QPoint(i, j), Qt::white);
 			MAP[i].push_back(point);
+		}
+	}
+}
+
+void clearMAP(vector<vector<pointData>>& MAP) {
+	for (int i = 0; i < 800; i++) {
+		for (int j = 0; j < 550; j++) {
+			MAP[i][j].setColor(Qt::white);
 		}
 	}
 }
