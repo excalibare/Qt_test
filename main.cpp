@@ -42,6 +42,7 @@ enum DrawMode {
 	ArcMode,
 	CircleMode,
 	PolygonMode,
+	FillMode,
 };
 
 // 线段绘制算法
@@ -78,8 +79,16 @@ struct Arc {
 
 // 结构体来存储每个点的信息，为多边形绘制服务
 struct Point {
+public:
 	int x, y;
 	Point(int x = 0, int y = 0) : x(x), y(y) {}
+
+	int Getx() {
+		return x;
+	}
+	int Gety() {
+		return y;
+	}
 };
 
 // 结构体来存储多边形每个边的信息，为多边形绘制服务
@@ -111,8 +120,10 @@ public:
 
 class Fill {
 public:
-	Point points; // 储存种子点
+	Point point; // 储存种子点
 	QColor color; // 储存填充颜色
+
+	Fill(Point t_point, QColor t_color) :point(t_point), color(t_color) {}
 };
 
 class ShapeDrawer : public QWidget {
@@ -142,12 +153,14 @@ private:
 	std::vector<Polygon> polygons; // 存储多个多边形
 	Polygon currentPolygon; // 当前正在绘制的多边形
 
+	std::vector<Fill> fills; // 存储多个多边形
+
 protected:
 	// 重写绘制事件
 	void paintEvent(QPaintEvent* event) override
 	{
 		// 各类图形的计数器，控制从vector中取出的顺序
-		int i1 = 0, i2 = 0, i3 = 0;
+		int i1 = 0, i2 = 0, i3 = 0, i4 = 0;
 
 		QPainter painter(this);
 
@@ -205,6 +218,15 @@ protected:
 				if (polygon.isClosed()) {
 					scanlineFill(painter, polygon);
 				}
+			}
+			else if (shape.at(c) == 4 && fills.size() > i4) {
+				const Fill& fill = fills.at(i4++);
+				QPen pen;
+				pen.setColor(fill.color);  // 设置线条颜色(默认 black)
+				painter.setPen(pen);
+				qDebug() << "In paintevent : " << fill.color << " " << Fill(fill).point.Getx() << " " << Fill(fill).point.Gety();
+				regionFillUp(painter, fill.point, fill.color);
+				regionFillDown(painter, fill.point, fill.color);
 			}
 		}
 
@@ -291,6 +313,7 @@ protected:
 
 	// 判定绘制的时候是否出界（针对MAP）
 	// 写fill的lyc：谢谢你提供了这个东西
+	// lyc：不是，如果width和height没有默认参数我为什么不自己写判断
 	bool checkLegalPos(int x, int y, int width, int height) {
 		if (x >= 0 && x <= width && y >= 0 && y <= height) {
 			return true;
@@ -514,12 +537,71 @@ protected:
 			// 对交点进行排序
 			std::sort(intersections.begin(), intersections.end());
 
-			// 画出交点之间的线段
+			// 画出交点之间的线段(预览版，故使用Qt的函数)
 			for (size_t i = 0; i < intersections.size(); i += 2) {
 				painter.drawLine(intersections[i], y, intersections[i + 1], y);
-
 			}
 		}
+	}
+
+	void regionFillUp(QPainter& painter, Point curFillPoint, QColor curFillColor) {
+		int limit = 800;
+
+		if (curFillPoint.Gety() >= 600 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 800 || curFillPoint.Getx() < 0) return;
+		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()].getColor();
+		if (oldColor == curFillColor) return;
+
+		int xr, x, y;
+		x = curFillPoint.Getx();
+		y = curFillPoint.Gety();
+		bool spanNeedFill = false;
+		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
+		y = pt.Gety();
+		x = pt.Getx();
+		
+		while (MAP[x][y].getColor() == oldColor && x < limit) {
+			drawPixel(x, y, painter);
+			x++;
+		}
+		xr = x - 1;
+		x = pt.Getx() - 1;
+		while (MAP[x][y].getColor() == oldColor && x > 0) {
+			drawPixel(x, y, painter);
+			x--;
+		}
+		pt.x = curFillPoint.Getx();
+		pt.y = curFillPoint.Gety() + 1;
+		regionFillUp(painter, pt, curFillColor);
+	}
+
+	void regionFillDown(QPainter& painter, Point curFillPoint, QColor curFillColor) {
+		int limit = 800;
+
+		if (curFillPoint.Gety() >= 600 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 800 || curFillPoint.Getx() < 0) return;
+		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()].getColor();
+		if (oldColor == curFillColor) return;
+
+		int xr, x, y;
+		x = curFillPoint.Getx();
+		y = curFillPoint.Gety();
+		bool spanNeedFill = false;
+		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
+		y = pt.Gety();
+		x = pt.Getx();
+		
+		while (MAP[x][y].getColor() == oldColor && x < limit) {
+			drawPixel(x, y, painter);
+			x++;
+		}
+		xr = x - 1;
+		x = pt.Getx() - 1;
+		while (MAP[x][y].getColor() == oldColor && x > 0) {
+			drawPixel(x, y, painter);
+			x--;
+		}
+		pt.x = curFillPoint.Getx();
+		pt.y = curFillPoint.Gety() - 1;
+		regionFillUp(painter, pt, curFillColor);
 	}
 
 	// 处理鼠标按下事件
@@ -556,6 +638,11 @@ protected:
 				currentPolygon.color = currentLineColor; // 修改多边形颜色
 				shape.push_back(3);
 				update(); // 触发界面重绘
+			}
+			else if (mode == FillMode) {
+				fills.push_back(Fill(Point(event->pos().x(), event->pos().y()), currentLineColor));
+				
+				shape.push_back(4);
 			}
 
 			hasStartPoint = true;
@@ -708,6 +795,7 @@ public:
 		modeComboBox->addItem("Circle", CircleMode);
 		modeComboBox->addItem("Arc", ArcMode);
 		modeComboBox->addItem("Shape", PolygonMode);
+		modeComboBox->addItem("Fill", FillMode);
 
 		// 创建下拉框并添加算法选项
 		algorithmComboBox = new QComboBox(this);
