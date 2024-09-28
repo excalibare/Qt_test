@@ -506,7 +506,7 @@ protected:
 		float angle = atan2(y, x);
 		if (angle < 0) angle += 2 * M_PI;
 		if (angle >= startRad && angle <= endRad) {
-			painter.drawPoint(center.x() + x, center.y() + y);
+			drawPixel(center.x() + x, center.y() + y,painter);
 		}
 	}
 
