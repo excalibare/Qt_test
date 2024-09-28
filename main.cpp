@@ -155,6 +155,7 @@ private:
 	Polygon currentPolygon; // 当前正在绘制的多边形
 
 	std::vector<Fill> fills; // 存储多个多边形
+	QStack<Point> stack;
 
 protected:
 	// 重写绘制事件
@@ -226,8 +227,7 @@ protected:
 				pen.setColor(fill.color);  // 设置线条颜色(默认 black)
 				painter.setPen(pen);
 				qDebug() << "In paintevent : " << fill.color << " " << Fill(fill).point.Getx() << " " << Fill(fill).point.Gety();
-				regionFillUp(painter, fill.point, fill.color);
-				regionFillDown(painter, fill.point, fill.color);
+				fillShape(painter, fill.point, fill.color);
 			}
 		}
 
@@ -546,63 +546,70 @@ protected:
 		}
 	}
 
-	void regionFillDown(QPainter& painter, Point curFillPoint, QColor curFillColor) {
-		int limit = 799;
+	void fillShape(QPainter& painter, Point point, QColor newColor) {
+		//将点击位置的颜色设置为需要替换的颜色
+		QColor oldColor = MAP[point.Getx()][point.Gety()].getColor();
+		if (oldColor == newColor)
+			return;
+		int xl, xr, i, x, y;
+		x = point.Getx();
+		y = point.Gety();
+		bool spanNeedFill;
+		Point pt(point);
+		stack.push(pt);
+		while (!stack.isEmpty()) {
+			pt = stack.pop();
+			y = pt.Gety();
+			x = pt.Getx();
+			//if (y >= 549 || y <= 0)continue;
+			while (MAP[x][y].getColor() == oldColor && x < 799) {
+				drawPixel(x, y, painter);
+				x++;
+			}
+			xr = x - 1;
+			x = pt.Getx() - 1;
+			while (MAP[x][y].getColor() == oldColor && x > 0) {
+				drawPixel(x, y, painter);
+				x--;
+			}
+			xl = x + 1;
+			x = xl;
+			y = y + 1;
+			while (x < xr) {
+				spanNeedFill = false;
+				while (MAP[x][y].getColor() == oldColor && x < 799) {
+					spanNeedFill = true;
+					x++;
 
-		if (curFillPoint.Gety() >= 549 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 799 || curFillPoint.Getx() < 0) return;
-		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()+1].getColor();
-		if (oldColor == curFillColor) return;
-		
-		int xr, x, y;
-		bool spanNeedFill = false;
-		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
-		y = pt.Gety()+1;
-		x = pt.Getx();
-		
-		while (MAP[x][y].getColor() == oldColor && x < limit) {
-			drawPixel(x, y, painter);
-			x++;
-		}
-		xr = x - 1;
-		x = pt.Getx() - 1;
-		while (MAP[x][y].getColor() == oldColor && x > 0) {
-			drawPixel(x, y, painter);
-			x--;
-		}
-		pt.x = curFillPoint.Getx();
-		pt.y = curFillPoint.Gety() + 1;
-		regionFillDown(painter, pt, curFillColor);
-	}
+				}
+				if (spanNeedFill) {
+					pt.x = x - 1;
+					pt.y = y;
+					stack.push(pt);
+					spanNeedFill = false;
 
-	void regionFillUp(QPainter& painter, Point curFillPoint, QColor curFillColor) {
-		int limit = 799;
+				}
+				while (MAP[x][y].getColor() != oldColor && x < xr)x++;
+			}
+			x = xl;
+			y = y - 2;
+			while (x < xr) {
+				spanNeedFill = false;
+				while (MAP[x][y].getColor() == oldColor && x < 599) {
+					spanNeedFill = true;
+					x++;
 
-		if (curFillPoint.Gety() >= 549 || curFillPoint.Gety() < 0 || curFillPoint.Getx() >= 799 || curFillPoint.Getx() < 0) return;
-		QColor oldColor = MAP[curFillPoint.Getx()][curFillPoint.Gety()].getColor();
-		if (oldColor == curFillColor) return;
+				}
+				if (spanNeedFill) {
+					pt.x = x - 1;
+					pt.y = y;
+					stack.push(pt);
+					spanNeedFill = false;
 
-		int xr, x, y;
-		x = curFillPoint.Getx();
-		y = curFillPoint.Gety();
-		
-		bool spanNeedFill = false;
-		Point pt(curFillPoint.Getx(), curFillPoint.Gety());
-		y = pt.Gety();
-		x = pt.Getx();
-		
-		while (MAP[x][y].getColor() == oldColor && x < limit) {
-			drawPixel(x, y, painter);
-			x++;
+				}
+				while (MAP[x][y].getColor() != oldColor && x < xr)x++;
+			}
 		}
-		xr = x - 1;
-		x = pt.Getx() - 1;
-		while (MAP[x][y].getColor() == oldColor && x > 0) {
-			drawPixel(x, y, painter);
-			x--;
-		}
-		pt.x = curFillPoint.Getx();
-		pt.y = curFillPoint.Gety() - 1;
-		regionFillUp(painter, pt, curFillColor);
 	}
 
 	// 处理鼠标按下事件
@@ -869,10 +876,10 @@ public:
 };
 
 void initMAP(vector<vector<pointData>>& MAP) {
-	for (int i = 0; i < 800; i++) {
+	for (int i = 0; i < 1000; i++) {
 		vector<pointData> row;
 		MAP.push_back(row);
-		for (int j = 0; j < 550; j++) {
+		for (int j = 0; j < 1000; j++) {
 			//对每一行中的每一列进行添加点
 			pointData point(QPoint(i, j), Qt::white);
 			MAP[i].push_back(point);
