@@ -14,8 +14,7 @@
 #include "stdafx.h"
 using namespace std;
 
-//TODO:圆弧的 360 与 0 的交界处功能未完善
-//TODO:起始角 大于 结束角 功能为完善
+//TODO:绘制弧线的 起始角 大于 结束角 功能为完善
 
 // 用于实现填充（ pointData 与 MAP ）
 class pointData {
@@ -129,71 +128,128 @@ private:
     QPoint center;              // 圆心（对于圆弧）
     int radius;                 // 半径（对于圆弧）
     int startAngle, endAngle;   // 圆弧的起始和终止角度
-    int counter = 0;                // 计数（点击鼠标次数，0-2循环）
+    int counter = 0;            // 计数（点击鼠标次数，0-2循环）
 
+    vector<int> shape;         // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形
     QVector<Arc> arcs;          // 存储已绘制的直线段
     QVector<Line> lines;        // 存储已绘制的直线段
-
     //std::vector<Point> points; // 存储多边形顶点
     //bool polygonClosed = false; // 标记多边形是否封闭
     std::vector<Polygon> polygons; // 存储多个多边形
+
     Polygon currentPolygon; // 当前正在绘制的多边形
 
 protected:
     // 重写绘制事件
     void paintEvent(QPaintEvent* event) override 
     {
+        // 各类图形的计数器，控制从vector中取出的顺序
+        int i1 = 0, i2 = 0, i3 = 0;
+
         QPainter painter(this);
 
         // 每次刷新的时候重新绘制已存在直线
-        for (const Line& line : lines) {
+        for (int c = 0; c < shape.size(); c++) {
             QPen pen;
-            pen.setColor(line.colour);  // 设置线条颜色(默认 black)
-            pen.setWidth(line.width);   // 使用 width 设置线条粗细
-            painter.setPen(pen);
-
-            switch (line.alg) {
-            case DDA:
-                drawDDALine(painter, line.line.p1(), line.line.p2());
-                break;
-            case Bresenham:
-                drawBresenhamLine(painter, line.line.p1(), line.line.p2());
-                break;
-            case Midpoint:
-                drawMidpointLine(painter, line.line.p1(), line.line.p2());
-                break;
-            case DashLine:
-                drawDashLine(painter, line.line.p1(), line.line.p2());
-                break;
+            // 重绘直线
+            if (shape.at(c) == 1 && lines.size() > i1){
+                const Line& line = lines.at(i1);
+                pen.setColor(line.colour);  // 设置线条颜色(默认 black)
+                pen.setWidth(line.width);   // 使用 width 设置线条粗细
+                painter.setPen(pen);
+                switch (line.alg) {
+                case DDA:
+                    drawDDALine(painter, line.line.p1(), line.line.p2());
+                    break;
+                case Bresenham:
+                    drawBresenhamLine(painter, line.line.p1(), line.line.p2());
+                    break;
+                case Midpoint:
+                    drawMidpointLine(painter, line.line.p1(), line.line.p2());
+                    break;
+                case DashLine:
+                    drawDashLine(painter, line.line.p1(), line.line.p2());
+                    break;
+                }
+                i1++;
+            }
+            // 重绘圆弧 或 圆
+            else if (shape.at(c) == 2 && arcs.size() > i2){
+                const Arc& arc = arcs.at(i2);
+                pen.setColor(arc.colour);   // 设置线条颜色(默认 black)
+                pen.setWidth(arc.width);    // 使用 width 设置线条粗细
+                painter.setPen(pen);
+                if (arc.startAngle <= arc.endAngle) {
+                    drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, arc.endAngle);
+                }
+                else {
+                    drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, 360);
+                    drawMidpointArc(painter, arc.center, arc.radius, 0, arc.endAngle);
+                }
+                i2++;
+            }
+            // 重绘多边形
+            else if (shape.at(c) == 3&& polygons.size() > i3) {
+                const Polygon& polygon = polygons.at(i3);
+                if (polygon.points.size() > 1) {
+                    for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
+                        painter.drawLine(polygon.points[i].x, polygon.points[i].y, polygon.points[i + 1].x, polygon.points[i + 1].y);
+                    }
+                }
+                if (polygon.isClosed()) {
+                    scanlineFill(painter, polygon);
+                }
+                i3++;
             }
         }
+        //for (const Line& line : lines) {
+        //    QPen pen;
+        //    pen.setColor(line.colour);  // 设置线条颜色(默认 black)
+        //    pen.setWidth(line.width);   // 使用 width 设置线条粗细
+        //    painter.setPen(pen);
+
+        //    switch (line.alg) {
+        //    case DDA:
+        //        drawDDALine(painter, line.line.p1(), line.line.p2());
+        //        break;
+        //    case Bresenham:
+        //        drawBresenhamLine(painter, line.line.p1(), line.line.p2());
+        //        break;
+        //    case Midpoint:
+        //        drawMidpointLine(painter, line.line.p1(), line.line.p2());
+        //        break;
+        //    case DashLine:
+        //        drawDashLine(painter, line.line.p1(), line.line.p2());
+        //        break;
+        //    }
+        //}
 
         // 每次刷新的时候重新绘制已存储的圆弧
-        for (const Arc& arc : arcs) {
-            QPen pen;
-            pen.setColor(arc.colour);   // 设置线条颜色(默认 black)
-            pen.setWidth(arc.width);    // 使用 width 设置线条粗细
-            painter.setPen(pen);
-            if (arc.startAngle <= arc.endAngle) {
-                drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, arc.endAngle);
-            }
-            else {
-                drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, 360);
-                drawMidpointArc(painter, arc.center, arc.radius, 0, arc.endAngle);
-            }
-        }
+        //for (const Arc& arc : arcs) {
+        //    QPen pen;
+        //    pen.setColor(arc.colour);   // 设置线条颜色(默认 black)
+        //    pen.setWidth(arc.width);    // 使用 width 设置线条粗细
+        //    painter.setPen(pen);
+        //    if (arc.startAngle <= arc.endAngle) {
+        //        drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, arc.endAngle);
+        //    }
+        //    else {
+        //        drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, 360);
+        //        drawMidpointArc(painter, arc.center, arc.radius, 0, arc.endAngle);
+        //    }
+        //}
 
         // 画出所有已经存储的多边形
-        for (const Polygon& polygon : polygons) {
-            if (polygon.points.size() > 1) {
-                for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
-                    painter.drawLine(polygon.points[i].x, polygon.points[i].y, polygon.points[i + 1].x, polygon.points[i + 1].y);
-                }
-            }
-            if (polygon.isClosed()) {
-                scanlineFill(painter, polygon);
-            }
-        }
+        //for (const Polygon& polygon : polygons) {
+        //    if (polygon.points.size() > 1) {
+        //        for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
+        //            painter.drawLine(polygon.points[i].x, polygon.points[i].y, polygon.points[i + 1].x, polygon.points[i + 1].y);
+        //        }
+        //    }
+        //    if (polygon.isClosed()) {
+        //        scanlineFill(painter, polygon);
+        //    }
+        //}
 
         // 绘制当前正在创建的多边形
         if (currentPolygon.points.size() > 1) {
@@ -280,7 +336,7 @@ protected:
         
     }
 
-    // 判定是否出界，暂时没用
+    // 判定绘制的时候是否出界（针对MAP）
     bool checkLegalPos(int x, int y, int width, int height) {
         if (x >= 0 && x <= width && y >= 0 && y <= height) {
             return true;
@@ -521,13 +577,16 @@ protected:
                 // 第一次点击：记录起点
                 startPoint = event->pos();
                 endPoint = startPoint;      // 初始化终点为起点
+                shape.push_back(1);
             }
             else if (mode == CircleMode) {
                 center = event->pos();      // 记录圆心
                 hasStartPoint = true;
+                shape.push_back(2);
             }
             else if (mode == ArcMode && counter == 0) {
                 center = event->pos();      // 记录圆心
+                shape.push_back(2);
             }
             else if (mode == ArcMode && counter == 1) {
                 // 计算当前鼠标位置与圆心的角度
@@ -542,6 +601,7 @@ protected:
                 int x = event->pos().x();
                 int y = event->pos().y();
                 currentPolygon.addPoint(Point(x, y)); // 添加顶点
+                shape.push_back(3);
                 update(); // 触发界面重绘
             }
             
