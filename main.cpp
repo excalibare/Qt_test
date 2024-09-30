@@ -14,9 +14,9 @@
 #include "stdafx.h"
 using namespace std;
 
-//TODO:»æÖÆ»¡ÏßµÄ ÆğÊ¼½Ç ´óÓÚ ½áÊø½Ç ¹¦ÄÜÎ´ÍêÉÆ
+//TODO:ç»˜åˆ¶å¼§çº¿çš„ èµ·å§‹è§’ å¤§äº ç»“æŸè§’ åŠŸèƒ½æœªå®Œå–„
 
-// ÓÃÓÚSutherlandTrim
+// ç”¨äºSutherlandTrim
 enum OutCode {
 	INSIDE = 0, // 0000
 	LEFT = 1,   // 0001
@@ -25,7 +25,7 @@ enum OutCode {
 	TOP = 8     // 1000
 };
 
-// ÓÃÓÚÊµÏÖÌî³ä£¨ pointData Óë MAP £©
+// ç”¨äºå®ç°å¡«å……ï¼ˆ pointData ä¸ MAP ï¼‰
 class pointData {
 protected:
 	QPoint pos;
@@ -46,7 +46,7 @@ public:
 void initMAP(vector<vector<pointData>>& MAP); 
 void clearMAP(vector<vector<pointData>>& MAP);
 
-// ¹¦ÄÜÀàĞÍ£ºÖ±Ïß»òÔ²»¡
+// åŠŸèƒ½ç±»å‹ï¼šç›´çº¿æˆ–åœ†å¼§
 enum DrawMode {
 	LineMode,
 	ArcMode,
@@ -56,7 +56,7 @@ enum DrawMode {
 	TrimMode
 };
 
-// Ïß¶Î»æÖÆËã·¨
+// çº¿æ®µç»˜åˆ¶ç®—æ³•
 enum Algorithm {
 	DDA,
 	Bresenham,
@@ -66,31 +66,31 @@ enum Algorithm {
 	MidTrim
 };
 
-// ½á¹¹ÌåÀ´´æ´¢Ã¿ÌõÏßµÄĞÅÏ¢£¬°üÀ¨Æğµã¡¢ÖÕµãºÍÏßÌõ¿í¶È
+// ç»“æ„ä½“æ¥å­˜å‚¨æ¯æ¡çº¿çš„ä¿¡æ¯ï¼ŒåŒ…æ‹¬èµ·ç‚¹ã€ç»ˆç‚¹å’Œçº¿æ¡å®½åº¦
 struct Line {
 	QLine line;
 	int width;
 	QColor colour;  // lyc:6
 	Algorithm alg;
-	// Qt::PenStyle penStyle; // ÏßĞÍ
+	// Qt::PenStyle penStyle; // çº¿å‹
 
 	Line(QPoint p1, QPoint p2, int w, QColor c, Algorithm a) : line(p1, p2), width(w), colour(c), alg(a) {}
 };
 
-// ½á¹¹ÌåÀ´´æ´¢Ã¿ÌõÔ²»¡µÄĞÅÏ¢£¬°üÀ¨Ô²ĞÄ¡¢°ë¾¶¡¢ÆğÊ¼½ÇºÍ½áÊø½Ç
+// ç»“æ„ä½“æ¥å­˜å‚¨æ¯æ¡åœ†å¼§çš„ä¿¡æ¯ï¼ŒåŒ…æ‹¬åœ†å¿ƒã€åŠå¾„ã€èµ·å§‹è§’å’Œç»“æŸè§’
 struct Arc {
-	QPoint center;  // Ô²ĞÄ
-	int radius;     // °ë¾¶
-	int startAngle; // ÆğÊ¼½Ç¶È
-	int endAngle;   // ÖÕÖ¹½Ç¶È
+	QPoint center;  // åœ†å¿ƒ
+	int radius;     // åŠå¾„
+	int startAngle; // èµ·å§‹è§’åº¦
+	int endAngle;   // ç»ˆæ­¢è§’åº¦
 	int width;
 	QColor colour;
-	// Qt::PenStyle penStyle; // ÏßĞÍ
+	// Qt::PenStyle penStyle; // çº¿å‹
 
 	Arc(QPoint p, int r, int sa, int ea, int w, QColor c) :center(p), radius(r), startAngle(sa), endAngle(ea), width(w), colour(c) {}
 };
 
-// ½á¹¹ÌåÀ´´æ´¢Ã¿¸öµãµÄĞÅÏ¢£¬Îª¶à±ßĞÎ»æÖÆ·şÎñ
+// ç»“æ„ä½“æ¥å­˜å‚¨æ¯ä¸ªç‚¹çš„ä¿¡æ¯ï¼Œä¸ºå¤šè¾¹å½¢ç»˜åˆ¶æœåŠ¡
 struct Point {
 public:
 	int x, y;
@@ -104,7 +104,7 @@ public:
 	}
 };
 
-// ½á¹¹ÌåÀ´´æ´¢¶à±ßĞÎÃ¿¸ö±ßµÄĞÅÏ¢£¬Îª¶à±ßĞÎ»æÖÆ·şÎñ
+// ç»“æ„ä½“æ¥å­˜å‚¨å¤šè¾¹å½¢æ¯ä¸ªè¾¹çš„ä¿¡æ¯ï¼Œä¸ºå¤šè¾¹å½¢ç»˜åˆ¶æœåŠ¡
 struct Edge {
 	int yMax;
 	float xMin, slopeReciprocal;
@@ -112,7 +112,7 @@ struct Edge {
 
 class Polygon {
 public:
-	std::vector<Point> points; // ´¢´æ¶à±ßĞÎµÄ¶¥µã
+	std::vector<Point> points; // å‚¨å­˜å¤šè¾¹å½¢çš„é¡¶ç‚¹
 	QColor color;
 	Polygon() {}
 
@@ -126,15 +126,15 @@ public:
 
 	void closePolygon() {
 		if (points.size() > 2 && !isClosed()) {
-			points.push_back(points.front()); // ·â±Õ¶à±ßĞÎ
+			points.push_back(points.front()); // å°é—­å¤šè¾¹å½¢
 		}
 	}
 };
 
 class Fill {
 public:
-	Point point; // ´¢´æÖÖ×Óµã
-	QColor color; // ´¢´æÌî³äÑÕÉ«
+	Point point; // å‚¨å­˜ç§å­ç‚¹
+	QColor color; // å‚¨å­˜å¡«å……é¢œè‰²
 
 	Fill(Point t_point, QColor t_color) :point(t_point), color(t_color) {}
 };
@@ -142,56 +142,56 @@ public:
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
-	DrawMode mode;              // µ±Ç°»æÖÆÄ£Ê½£ºÖ±Ïß »ò Ô²»¡
+	DrawMode mode;              // å½“å‰ç»˜åˆ¶æ¨¡å¼ï¼šç›´çº¿ æˆ– åœ†å¼§
 	vector<vector<pointData>> MAP;
 
-	int lineWidth = 5;          // ´æ´¢ÏßÌõ¿í¶È
-	bool hasStartPoint = false; // ÊÇ·ñÓĞÆğµã£¨ÓÃÓÚÖ±Ïß»òÔ²»¡£©
-	bool drawing = false;       // ÊÇ·ñÕıÔÚ»æÖÆ£¨ÓÃÀ´¿ØÖÆÊó±êÊÍ·ÅÊ±µÄ¶¯×÷£©
+	int lineWidth = 5;          // å­˜å‚¨çº¿æ¡å®½åº¦
+	bool hasStartPoint = false; // æ˜¯å¦æœ‰èµ·ç‚¹ï¼ˆç”¨äºç›´çº¿æˆ–åœ†å¼§ï¼‰
+	bool drawing = false;       // æ˜¯å¦æ­£åœ¨ç»˜åˆ¶ï¼ˆç”¨æ¥æ§åˆ¶é¼ æ ‡é‡Šæ”¾æ—¶çš„åŠ¨ä½œï¼‰
 	bool drawingrect = false;
-	QColor currentLineColor = Qt::black;    // µ±Ç°ÏßÌõÑÕÉ«
+	QColor currentLineColor = Qt::black;    // å½“å‰çº¿æ¡é¢œè‰²
 
-	QPoint startPoint;          // Ïß¶ÎµÄÆğµã
-	QPoint endPoint;            // Ïß¶ÎµÄÖÕµã
-	Algorithm algorithm = Midpoint;  // µ±Ç°Ñ¡ÔñµÄÖ±Ïß¶ÎËã·¨
+	QPoint startPoint;          // çº¿æ®µçš„èµ·ç‚¹
+	QPoint endPoint;            // çº¿æ®µçš„ç»ˆç‚¹
+	Algorithm algorithm = Midpoint;  // å½“å‰é€‰æ‹©çš„ç›´çº¿æ®µç®—æ³•
 
-	QPoint center;              // Ô²ĞÄ£¨¶ÔÓÚÔ²»¡£©
-	int radius;                 // °ë¾¶£¨¶ÔÓÚÔ²»¡£©
-	int startAngle, endAngle;   // Ô²»¡µÄÆğÊ¼ºÍÖÕÖ¹½Ç¶È
-	int counter = 0;            // ¼ÆÊı£¨µã»÷Êó±ê´ÎÊı£¬0-2Ñ­»·£©
+	QPoint center;              // åœ†å¿ƒï¼ˆå¯¹äºåœ†å¼§ï¼‰
+	int radius;                 // åŠå¾„ï¼ˆå¯¹äºåœ†å¼§ï¼‰
+	int startAngle, endAngle;   // åœ†å¼§çš„èµ·å§‹å’Œç»ˆæ­¢è§’åº¦
+	int counter = 0;            // è®¡æ•°ï¼ˆç‚¹å‡»é¼ æ ‡æ¬¡æ•°ï¼Œ0-2å¾ªç¯ï¼‰
 
-	vector<int> shape;          // ¿ØÖÆÍ¼ĞÎµÄÖØ»æË³Ğò£¬·ÀÖ¹Ë³Ğò´íÂÒ 1.Ö±Ïß 2.Ô²»¡»òÔ² 3.¶à±ßĞÎ
-	QVector<Arc> arcs;          // ´æ´¢ÒÑ»æÖÆµÄÖ±Ïß¶Î
-	QVector<Line> lines;        // ´æ´¢ÒÑ»æÖÆµÄÖ±Ïß¶Î
+	vector<int> shape;          // æ§åˆ¶å›¾å½¢çš„é‡ç»˜é¡ºåºï¼Œé˜²æ­¢é¡ºåºé”™ä¹± 1.ç›´çº¿ 2.åœ†å¼§æˆ–åœ† 3.å¤šè¾¹å½¢
+	QVector<Arc> arcs;          // å­˜å‚¨å·²ç»˜åˆ¶çš„ç›´çº¿æ®µ
+	QVector<Line> lines;        // å­˜å‚¨å·²ç»˜åˆ¶çš„ç›´çº¿æ®µ
 
-	std::vector<Polygon> polygons; // ´æ´¢¶à¸ö¶à±ßĞÎ
-	Polygon currentPolygon; // µ±Ç°ÕıÔÚ»æÖÆµÄ¶à±ßĞÎ
+	std::vector<Polygon> polygons; // å­˜å‚¨å¤šä¸ªå¤šè¾¹å½¢
+	Polygon currentPolygon; // å½“å‰æ­£åœ¨ç»˜åˆ¶çš„å¤šè¾¹å½¢
 
-	std::vector<Fill> fills; // ´æ´¢¶à¸ö¶à±ßĞÎ
+	std::vector<Fill> fills; // å­˜å‚¨å¤šä¸ªå¤šè¾¹å½¢
 	QStack<Point> stack;
 
-	QPoint clipStartPoint;  // ²Ã¼ô´°¿ÚµÄÆğµã
-	QPoint clipEndPoint;    // ²Ã¼ô´°¿ÚµÄÖÕµã
+	QPoint clipStartPoint;  // è£å‰ªçª—å£çš„èµ·ç‚¹
+	QPoint clipEndPoint;    // è£å‰ªçª—å£çš„ç»ˆç‚¹
 
 	float XL = 0, XR = 800, YB = 0, YT = 550;
 
 protected:
-	// ÖØĞ´»æÖÆÊÂ¼ş
+	// é‡å†™ç»˜åˆ¶äº‹ä»¶
 	void paintEvent(QPaintEvent* event) override
 	{
-		// ¸÷ÀàÍ¼ĞÎµÄ¼ÆÊıÆ÷£¬¿ØÖÆ´ÓvectorÖĞÈ¡³öµÄË³Ğò
+		// å„ç±»å›¾å½¢çš„è®¡æ•°å™¨ï¼Œæ§åˆ¶ä»vectorä¸­å–å‡ºçš„é¡ºåº
 		int i1 = 0, i2 = 0, i3 = 0, i4 = 0;
 		clearMAP(MAP);
 		QPainter painter(this);
 
-		// Ã¿´ÎË¢ĞÂµÄÊ±ºòÖØĞÂ»æÖÆÒÑ´æÔÚÖ±Ïß
+		// æ¯æ¬¡åˆ·æ–°çš„æ—¶å€™é‡æ–°ç»˜åˆ¶å·²å­˜åœ¨ç›´çº¿
 		for (int c = 0; c < shape.size(); c++) {
 			QPen pen;
-			// ÖØ»æÖ±Ïß
+			// é‡ç»˜ç›´çº¿
 			if (shape.at(c) == 1 && lines.size() > i1) {
 				const Line& line = lines.at(i1++);
-				pen.setColor(line.colour);  // ÉèÖÃÏßÌõÑÕÉ«(Ä¬ÈÏ black)
-				pen.setWidth(line.width);   // Ê¹ÓÃ width ÉèÖÃÏßÌõ´ÖÏ¸
+				pen.setColor(line.colour);  // è®¾ç½®çº¿æ¡é¢œè‰²(é»˜è®¤ black)
+				pen.setWidth(line.width);   // ä½¿ç”¨ width è®¾ç½®çº¿æ¡ç²—ç»†
 				painter.setPen(pen);
 				switch (line.alg) {
 				case DDA:
@@ -208,11 +208,11 @@ protected:
 					break;
 				}
 			}
-			// ÖØ»æÔ²»¡ »ò Ô²
+			// é‡ç»˜åœ†å¼§ æˆ– åœ†
 			else if (shape.at(c) == 2 && arcs.size() > i2) {
 				const Arc& arc = arcs.at(i2++);
-				pen.setColor(arc.colour);   // ÉèÖÃÏßÌõÑÕÉ«(Ä¬ÈÏ black)
-				pen.setWidth(arc.width);    // Ê¹ÓÃ width ÉèÖÃÏßÌõ´ÖÏ¸
+				pen.setColor(arc.colour);   // è®¾ç½®çº¿æ¡é¢œè‰²(é»˜è®¤ black)
+				pen.setWidth(arc.width);    // ä½¿ç”¨ width è®¾ç½®çº¿æ¡ç²—ç»†
 				painter.setPen(pen);
 				if (arc.startAngle <= arc.endAngle) {
 					drawMidpointArc(painter, arc.center, arc.radius, arc.startAngle, arc.endAngle);
@@ -222,12 +222,12 @@ protected:
 					drawMidpointArc(painter, arc.center, arc.radius, 0, arc.endAngle);
 				}
 			}
-			// ÖØ»æ¶à±ßĞÎ
+			// é‡ç»˜å¤šè¾¹å½¢
 			else if (shape.at(c) == 3 && polygons.size() > i3) {
 				const Polygon& polygon = polygons.at(i3++);
 				QPen pen;
-				pen.setColor(polygon.color);  // ÉèÖÃÏßÌõÑÕÉ«(Ä¬ÈÏ black)
-				// pen.setWidth(lineWidth);		 // Ê¹ÓÃ width ÉèÖÃÏßÌõ´ÖÏ¸
+				pen.setColor(polygon.color);  // è®¾ç½®çº¿æ¡é¢œè‰²(é»˜è®¤ black)
+				// pen.setWidth(lineWidth);		 // ä½¿ç”¨ width è®¾ç½®çº¿æ¡ç²—ç»†
 				painter.setPen(pen);
 				if (polygon.points.size() > 1) {
 					for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
@@ -242,26 +242,26 @@ protected:
 			else if (shape.at(c) == 4 && fills.size() > i4) {
 				const Fill& fill = fills.at(i4++);
 				QPen pen;
-				pen.setColor(fill.color);  // ÉèÖÃÏßÌõÑÕÉ«(Ä¬ÈÏ black)
+				pen.setColor(fill.color);  // è®¾ç½®çº¿æ¡é¢œè‰²(é»˜è®¤ black)
 				painter.setPen(pen);
 				qDebug() << "In paintevent : " << fill.color << " " << Fill(fill).point.Getx() << " " << Fill(fill).point.Gety();
 				fillShape(painter, fill.point, fill.color);
 			}
 		}
 
-		// »æÖÆµ±Ç°ÕıÔÚ´´½¨µÄ¶à±ßĞÎ
+		// ç»˜åˆ¶å½“å‰æ­£åœ¨åˆ›å»ºçš„å¤šè¾¹å½¢
 		if (currentPolygon.points.size() > 1) {
 			for (size_t i = 0; i < currentPolygon.points.size() - 1; ++i) {
 				painter.drawLine(currentPolygon.points[i].x, currentPolygon.points[i].y, currentPolygon.points[i + 1].x, currentPolygon.points[i + 1].y);
 			}
 		}
 
-		// Èç¹ûÓĞÆğµã£¬»æÖÆÏß¶ÎµÄÔ¤ÀÀ
+		// å¦‚æœæœ‰èµ·ç‚¹ï¼Œç»˜åˆ¶çº¿æ®µçš„é¢„è§ˆ
 		if (hasStartPoint) {
 			QPen pen;
-			QColor temp_color = Qt::gray;   // ÉèÖÃÔ¤ÀÀÏßÌõÑÕÉ«(»ÒÉ«£©
+			QColor temp_color = Qt::gray;   // è®¾ç½®é¢„è§ˆçº¿æ¡é¢œè‰²(ç°è‰²ï¼‰
 			pen.setColor(temp_color);
-			pen.setWidth(lineWidth);        // Ê¹ÓÃµ±Ç°ÉèÖÃµÄÏßÌõ¿í¶È
+			pen.setWidth(lineWidth);        // ä½¿ç”¨å½“å‰è®¾ç½®çš„çº¿æ¡å®½åº¦
 			painter.setPen(pen);
 
 			if (mode == LineMode) {
@@ -292,16 +292,16 @@ protected:
 				}
 			}
 			else if (mode == TrimMode && hasStartPoint) {
-				painter.setPen(Qt::DashLine);  // Ê¹ÓÃĞéÏß±íÊ¾²Ã¼ôÇøÓò
+				painter.setPen(Qt::DashLine);  // ä½¿ç”¨è™šçº¿è¡¨ç¤ºè£å‰ªåŒºåŸŸ
 				painter.drawRect(QRect(clipStartPoint, clipEndPoint));
 			}
 		}
 
-		// Èç¹ûÓĞÆğµãºÍÖÕµã£¬»æÖÆÊµ¼ÊÏß¶Î
+		// å¦‚æœæœ‰èµ·ç‚¹å’Œç»ˆç‚¹ï¼Œç»˜åˆ¶å®é™…çº¿æ®µ
 		if (drawing) {
 			QPen pen;
-			pen.setColor(currentLineColor); // Ê¹ÓÃµ±Ç°ÉèÖÃµÄÑÕÉ«
-			pen.setWidth(lineWidth);        // Ê¹ÓÃµ±Ç°ÉèÖÃµÄÏßÌõ¿í¶È
+			pen.setColor(currentLineColor); // ä½¿ç”¨å½“å‰è®¾ç½®çš„é¢œè‰²
+			pen.setWidth(lineWidth);        // ä½¿ç”¨å½“å‰è®¾ç½®çš„çº¿æ¡å®½åº¦
 			painter.setPen(pen);
 
 			if (mode == LineMode) {
@@ -333,16 +333,16 @@ protected:
 			}
 		}
 
-		//Èç¹ûµ±Ç°ÊÇ TrimMode£¬»æÖÆÓÃ»§Ñ¡ÔñµÄ²Ã¼ô¾ØĞÎ
+		//å¦‚æœå½“å‰æ˜¯ TrimModeï¼Œç»˜åˆ¶ç”¨æˆ·é€‰æ‹©çš„è£å‰ªçŸ©å½¢
 		if (mode == TrimMode && hasStartPoint) {
-			painter.setPen(Qt::DashLine);  // Ê¹ÓÃĞéÏß±íÊ¾²Ã¼ôÇøÓò
+			painter.setPen(Qt::DashLine);  // ä½¿ç”¨è™šçº¿è¡¨ç¤ºè£å‰ªåŒºåŸŸ
 			painter.drawRect(QRect(clipStartPoint, clipEndPoint));
 		}
 	}
 
-	// ÅĞ¶¨»æÖÆµÄÊ±ºòÊÇ·ñ³ö½ç£¨Õë¶ÔMAP£©
-	// Ğ´fillµÄlyc£ºĞ»Ğ»ÄãÌá¹©ÁËÕâ¸ö¶«Î÷
-	// lyc£º²»ÊÇ£¬Èç¹ûwidthºÍheightÃ»ÓĞÄ¬ÈÏ²ÎÊıÎÒÎªÊ²Ã´²»×Ô¼ºĞ´ÅĞ¶Ï
+	// åˆ¤å®šç»˜åˆ¶çš„æ—¶å€™æ˜¯å¦å‡ºç•Œï¼ˆé’ˆå¯¹MAPï¼‰
+	// å†™fillçš„lycï¼šè°¢è°¢ä½ æä¾›äº†è¿™ä¸ªä¸œè¥¿
+	// lycï¼šä¸æ˜¯ï¼Œå¦‚æœwidthå’Œheightæ²¡æœ‰é»˜è®¤å‚æ•°æˆ‘ä¸ºä»€ä¹ˆä¸è‡ªå·±å†™åˆ¤æ–­
 	bool checkLegalPos(int x, int y, int width, int height) {
 		if (x >= 0 && x <= width && y >= 0 && y <= height) {
 			return true;
@@ -351,9 +351,9 @@ protected:
 			return false;
 	}
 
-	// »æÖÆÏñËØµãÓë MAP ¶ÔÓ¦µÄÏñËØÊı¾İ
+	// ç»˜åˆ¶åƒç´ ç‚¹ä¸ MAP å¯¹åº”çš„åƒç´ æ•°æ®
 	void drawPixel(int x, int y, QPainter& painter) {
-		//²»Ê¹ÓÃ±ÊË¢
+		//ä¸ä½¿ç”¨ç¬”åˆ·
 		if (checkLegalPos(x, y, 800, 550)) {
 			painter.drawPoint(x, y);
 			// qDebug() << x << " " << y;
@@ -362,12 +362,12 @@ protected:
 	};
 
 	void drawPixel(int x, int y, vector<vector<pointData>>& MAP2, QColor color) {
-		if (checkLegalPos(x, y, 800, 550)) {  // È·±£ÏñËØÎ»ÖÃºÏ·¨
-			MAP2[x][y].setColor(color);  // ¸üĞÂ MAP2 µÄÑÕÉ«
+		if (checkLegalPos(x, y, 800, 550)) {  // ç¡®ä¿åƒç´ ä½ç½®åˆæ³•
+			MAP2[x][y].setColor(color);  // æ›´æ–° MAP2 çš„é¢œè‰²
 		}
 	}
 
-	// DDA Ëã·¨ÊµÏÖ
+	// DDA ç®—æ³•å®ç°
 	void drawDDALine(QPainter& painter, QPoint p1, QPoint p2) {
 		int dx = p2.x() - p1.x();
 		int dy = p2.y() - p1.y();
@@ -384,7 +384,7 @@ protected:
 		}
 	}
 
-	// Bresenham Ëã·¨ÊµÏÖ
+	// Bresenham ç®—æ³•å®ç°
 	void drawBresenhamLine(QPainter& painter, QPoint p1, QPoint p2) {
 		int x1 = p1.x();
 		int y1 = p1.y();
@@ -410,27 +410,27 @@ protected:
 		}
 	}
 
-	// ÖĞµãËã·¨ÊµÏÖ
+	// ä¸­ç‚¹ç®—æ³•å®ç°
 	void drawMidpointLine(QPainter& painter, QPoint p1, QPoint p2) {
-		// ÌáÈ¡ĞÅÏ¢
+		// æå–ä¿¡æ¯
 		int x1 = p1.x();
 		int y1 = p1.y();
 		int x2 = p2.x();
 		int y2 = p2.y();
 
-		int x = x1, y = y1;	//¸³³õÊ¼µã
+		int x = x1, y = y1;	//èµ‹åˆå§‹ç‚¹
 		int dy = y1 - y2, dx = x2 - x1;
-		int delta_x = (dx >= 0 ? 1 : (dx = -dx, -1));	//Èôdx>0Ôò²½³¤Îª1£¬·ñÔòÎª-1£¬Í¬Ê±dx±äÕı
-		int delta_y = (dy <= 0 ? 1 : (dy = -dy, -1));	//×¢ÒâÕâÀïdy<0,²ÅÊÇ»­²¼ÖĞyµÄÔö³¤·½Ïò
+		int delta_x = (dx >= 0 ? 1 : (dx = -dx, -1));	//è‹¥dx>0åˆ™æ­¥é•¿ä¸º1ï¼Œå¦åˆ™ä¸º-1ï¼ŒåŒæ—¶dxå˜æ­£
+		int delta_y = (dy <= 0 ? 1 : (dy = -dy, -1));	//æ³¨æ„è¿™é‡Œdy<0,æ‰æ˜¯ç”»å¸ƒä¸­yçš„å¢é•¿æ–¹å‘
 
-		drawPixel(x, y, painter);		//»­ÆğÊ¼µã
+		drawPixel(x, y, painter);		//ç”»èµ·å§‹ç‚¹
 
 		int d, incrE, incrNE;
-		if (-dy <= dx)		// Ğ±ÂÊ¾ø¶ÔÖµ <= 1
-			//ÕâÀï-dy¼´»­²¼ÖĞµÄdy
+		if (-dy <= dx)		// æ–œç‡ç»å¯¹å€¼ <= 1
+			//è¿™é‡Œ-dyå³ç”»å¸ƒä¸­çš„dy
 		{
-			d = 2 * dy + dx;	//³õÊ¼»¯ÅĞ¶ÏÊ½d
-			incrE = 2 * dy;		//È¡ÏñËØEÊ±ÅĞ±ğÊ½ÔöÁ¿
+			d = 2 * dy + dx;	//åˆå§‹åŒ–åˆ¤æ–­å¼d
+			incrE = 2 * dy;		//å–åƒç´ Eæ—¶åˆ¤åˆ«å¼å¢é‡
 			incrNE = 2 * (dy + dx);//NE
 			while (x != x2)
 			{
@@ -442,15 +442,15 @@ protected:
 				drawPixel(x, y, painter);
 			}
 		}
-		else				// Ğ±ÂÊ¾ø¶ÔÖµ > 1
-							// xºÍyÇé¿ö»¥»»
+		else				// æ–œç‡ç»å¯¹å€¼ > 1
+							// xå’Œyæƒ…å†µäº’æ¢
 		{
 			d = 2 * dx + dy;
 			incrE = 2 * dx;
 			incrNE = 2 * (dy + dx);
 			while (y != y2)
 			{
-				if (d < 0)	//×¢Òâd±ä»¯Çé¿ö
+				if (d < 0)	//æ³¨æ„då˜åŒ–æƒ…å†µ
 					d += incrE;
 				else
 					x += delta_x, d += incrNE;
@@ -460,7 +460,7 @@ protected:
 		}
 	}
 
-	// ĞéÏß»æÖÆ Bresenham Ëã·¨ÊµÏÖ
+	// è™šçº¿ç»˜åˆ¶ Bresenham ç®—æ³•å®ç°
 	void drawDashLine(QPainter& painter, QPoint p1, QPoint p2)
 	{
 		int x1 = p1.x();
@@ -473,13 +473,13 @@ protected:
 		int sy = (y1 < y2) ? 1 : -1;
 		int err = dx - dy;
 
-		int dashLength = 8;   // Ã¿¶ÎĞéÏßµÄ³¤¶È
-		int gapLength = 8;    // Ã¿¶Î¿Õ°×µÄ³¤¶È
-		int totalLength = dashLength + gapLength;  // ×ÜÖÜÆÚ³¤¶È
-		int stepCount = 0;    // ¼ÆÊı²½Êı£¬ÓÃÓÚ¾ö¶¨ÊÇ·ñ»æÖÆ
+		int dashLength = 8;   // æ¯æ®µè™šçº¿çš„é•¿åº¦
+		int gapLength = 8;    // æ¯æ®µç©ºç™½çš„é•¿åº¦
+		int totalLength = dashLength + gapLength;  // æ€»å‘¨æœŸé•¿åº¦
+		int stepCount = 0;    // è®¡æ•°æ­¥æ•°ï¼Œç”¨äºå†³å®šæ˜¯å¦ç»˜åˆ¶
 
 		while (x1 != x2 || y1 != y2) {
-			// Ö»ÔÚĞéÏßµÄ²¿·Ö»æÖÆµã
+			// åªåœ¨è™šçº¿çš„éƒ¨åˆ†ç»˜åˆ¶ç‚¹
 			if (stepCount % totalLength < dashLength) {
 				drawPixel(x1, y1, painter);
 			}
@@ -494,13 +494,13 @@ protected:
 				y1 += sy;
 			}
 
-			stepCount++;  // Ôö¼Ó²½Êı¼ÆÊıÆ÷
+			stepCount++;  // å¢åŠ æ­¥æ•°è®¡æ•°å™¨
 		}
 	}
 
-	// ÖĞµãÔ²»¡Ëã·¨ÊµÏÖ
+	// ä¸­ç‚¹åœ†å¼§ç®—æ³•å®ç°
 	void drawMidpointArc(QPainter& painter, QPoint center, int radius, int startAngle, int endAngle) {
-		// ½«½Ç¶È×ª»»Îª»¡¶È
+		// å°†è§’åº¦è½¬æ¢ä¸ºå¼§åº¦
 		float startRad = startAngle * M_PI / 180.0;
 		float endRad = endAngle * M_PI / 180.0;
 
@@ -523,7 +523,7 @@ protected:
 		}
 	}
 
-	// »æÖÆ¶Ô³Æµã£¬Ö»»æÖÆÔÚ½Ç¶È·¶Î§ÄÚµÄµã
+	// ç»˜åˆ¶å¯¹ç§°ç‚¹ï¼Œåªç»˜åˆ¶åœ¨è§’åº¦èŒƒå›´å†…çš„ç‚¹
 	void drawSymmetricPointsArc(QPainter& painter, QPoint center, int x, int y, float startRad, float endRad) {
 		drawPointInArc(painter, center, x, y, startRad, endRad);
 		drawPointInArc(painter, center, -x, y, startRad, endRad);
@@ -535,7 +535,7 @@ protected:
 		drawPointInArc(painter, center, -y, -x, startRad, endRad);
 	}
 
-	// ÅĞ¶ÏµãÊÇ·ñÔÚÔ²»¡½Ç¶È·¶Î§ÄÚ²¢»æÖÆ
+	// åˆ¤æ–­ç‚¹æ˜¯å¦åœ¨åœ†å¼§è§’åº¦èŒƒå›´å†…å¹¶ç»˜åˆ¶
 	void drawPointInArc(QPainter& painter, QPoint center, int x, int y, float startRad, float endRad) {
 		float angle = atan2(y, x);
 		if (angle < 0) angle += 2 * M_PI;
@@ -544,22 +544,22 @@ protected:
 		}
 	}
 
-	// É¨ÃèÏßËã·¨
+	// æ‰«æçº¿ç®—æ³•
 	void scanlineFill(QPainter& painter, const Polygon& polygon) {
 		if (polygon.points.size() < 3) return;
 
-		// ¼ÆËã×îĞ¡ºÍ×î´ó y ×ø±ê
+		// è®¡ç®—æœ€å°å’Œæœ€å¤§ y åæ ‡
 		int ymin = polygon.points[0].y, ymax = polygon.points[0].y;
 		for (const Point& p : polygon.points) {
 			ymin = std::min(ymin, p.y);
 			ymax = std::max(ymax, p.y);
 		}
 
-		// ¶ÔÃ¿ÌõÉ¨ÃèÏß´Ó ymin µ½ ymax ½øĞĞ´¦Àí
+		// å¯¹æ¯æ¡æ‰«æçº¿ä» ymin åˆ° ymax è¿›è¡Œå¤„ç†
 		for (int y = ymin; y <= ymax; ++y) {
 			std::vector<int> intersections;
 
-			// ¼ÆËãÃ¿Ìõ±ßÓëµ±Ç°É¨ÃèÏßµÄ½»µã
+			// è®¡ç®—æ¯æ¡è¾¹ä¸å½“å‰æ‰«æçº¿çš„äº¤ç‚¹
 			for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
 				const Point& p1 = polygon.points[i];
 				const Point& p2 = polygon.points[i + 1];
@@ -570,10 +570,10 @@ protected:
 				}
 			}
 
-			// ¶Ô½»µã½øĞĞÅÅĞò
+			// å¯¹äº¤ç‚¹è¿›è¡Œæ’åº
 			std::sort(intersections.begin(), intersections.end());
 
-			// »­³ö½»µãÖ®¼äµÄÏß¶Î(Ô¤ÀÀ°æ£¬¹ÊÊ¹ÓÃQtµÄº¯Êı)
+			// ç”»å‡ºäº¤ç‚¹ä¹‹é—´çš„çº¿æ®µ(é¢„è§ˆç‰ˆï¼Œæ•…ä½¿ç”¨Qtçš„å‡½æ•°)
 			for (size_t i = 0; i < intersections.size(); i += 2) {
 				painter.drawLine(intersections[i], y, intersections[i + 1], y);
 			}
@@ -581,7 +581,7 @@ protected:
 	}
 
 	void fillShape(QPainter& painter, Point point, QColor newColor) {
-		//½«µã»÷Î»ÖÃµÄÑÕÉ«ÉèÖÃÎªĞèÒªÌæ»»µÄÑÕÉ«
+		//å°†ç‚¹å‡»ä½ç½®çš„é¢œè‰²è®¾ç½®ä¸ºéœ€è¦æ›¿æ¢çš„é¢œè‰²
 		QColor oldColor = MAP[point.Getx()][point.Gety()].getColor();
 		if (oldColor == newColor)
 			return;
@@ -646,7 +646,7 @@ protected:
 		}
 	}
 
-	// Sutherland µã±àÂë
+	// Sutherland ç‚¹ç¼–ç 
 	OutCode computeOutCode(double x, double y, double xmin, double ymin, double xmax, double ymax) {
 		OutCode code = INSIDE;
 
@@ -658,7 +658,7 @@ protected:
 		return code;
 	}
 
-	// Sutherland ²Ã¼ôËã·¨
+	// Sutherland è£å‰ªç®—æ³•
 	bool cohenSutherlandClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
 		double x0 = line.x1(), y0 = line.y1();
 		double x1 = line.x2(), y1 = line.y2();
@@ -720,7 +720,7 @@ protected:
 	}
 
 
-	//ÖĞµãËã·¨²Ã¼ô
+	//ä¸­ç‚¹ç®—æ³•è£å‰ª
 	bool liangBarskyClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
 		double x0 = line.x1(), y0 = line.y1();
 		double x1 = line.x2(), y1 = line.y2();
@@ -758,66 +758,66 @@ protected:
 
 
 
-	// ´¦ÀíÊó±ê°´ÏÂÊÂ¼ş
+	// å¤„ç†é¼ æ ‡æŒ‰ä¸‹äº‹ä»¶
 	void mousePressEvent(QMouseEvent* event) override {
 		if (!hasStartPoint) {
 			if (mode == LineMode) {
-				// µÚÒ»´Îµã»÷£º¼ÇÂ¼Æğµã
+				// ç¬¬ä¸€æ¬¡ç‚¹å‡»ï¼šè®°å½•èµ·ç‚¹
 				startPoint = event->pos();
-				endPoint = startPoint;      // ³õÊ¼»¯ÖÕµãÎªÆğµã
+				endPoint = startPoint;      // åˆå§‹åŒ–ç»ˆç‚¹ä¸ºèµ·ç‚¹
 				shape.push_back(1);
 			}
 			else if (mode == CircleMode) {
-				center = event->pos();      // ¼ÇÂ¼Ô²ĞÄ
+				center = event->pos();      // è®°å½•åœ†å¿ƒ
 				hasStartPoint = true;
 				shape.push_back(2);
 			}
 			else if (mode == ArcMode && counter == 0) {
-				center = event->pos();      // ¼ÇÂ¼Ô²ĞÄ
+				center = event->pos();      // è®°å½•åœ†å¿ƒ
 				shape.push_back(2);
 			}
 			else if (mode == ArcMode && counter == 1) {
-				// ¼ÆËãµ±Ç°Êó±êÎ»ÖÃÓëÔ²ĞÄµÄ½Ç¶È
+				// è®¡ç®—å½“å‰é¼ æ ‡ä½ç½®ä¸åœ†å¿ƒçš„è§’åº¦
 				float angleRad = atan2(event->pos().y() - center.y(), event->pos().x() - center.x());
-				startAngle = static_cast<int>(angleRad * 180.0 / M_PI); // ×ª»»Îª½Ç¶È
+				startAngle = static_cast<int>(angleRad * 180.0 / M_PI); // è½¬æ¢ä¸ºè§’åº¦
 				if (startAngle < 0) {
-					startAngle += 360;  // È·±£½Ç¶ÈÎªÕı
+					startAngle += 360;  // ç¡®ä¿è§’åº¦ä¸ºæ­£
 				}
 			}
 			else if (mode == PolygonMode) {
-				// »ñÈ¡Êó±êµã»÷µÄÎ»ÖÃ
+				// è·å–é¼ æ ‡ç‚¹å‡»çš„ä½ç½®
 				int x = event->pos().x();
 				int y = event->pos().y();
-				currentPolygon.addPoint(Point(x, y)); // Ìí¼Ó¶¥µã
-				currentPolygon.color = currentLineColor; // ĞŞ¸Ä¶à±ßĞÎÑÕÉ«
+				currentPolygon.addPoint(Point(x, y)); // æ·»åŠ é¡¶ç‚¹
+				currentPolygon.color = currentLineColor; // ä¿®æ”¹å¤šè¾¹å½¢é¢œè‰²
 				shape.push_back(3);
-				update(); // ´¥·¢½çÃæÖØ»æ
+				update(); // è§¦å‘ç•Œé¢é‡ç»˜
 			}
 			else if (mode == FillMode) {
 				fills.push_back(Fill(Point(event->pos().x(), event->pos().y()), currentLineColor));
 				shape.push_back(4);
 			}
 			else if (mode == TrimMode) {
-				clipStartPoint = event->pos();  // ¼ÇÂ¼Êó±ê°´ÏÂµÄÎ»ÖÃ×÷ÎªÆğµã
+				clipStartPoint = event->pos();  // è®°å½•é¼ æ ‡æŒ‰ä¸‹çš„ä½ç½®ä½œä¸ºèµ·ç‚¹
 				drawingrect = true;
 			}
 
 			hasStartPoint = true;
-			drawing = false; // ³õÊ¼»¯Îª²»»æÖÆÊµ¼ÊÖ±Ïß
+			drawing = false; // åˆå§‹åŒ–ä¸ºä¸ç»˜åˆ¶å®é™…ç›´çº¿
 		}
 	}
 
-	// ´¦ÀíÊó±êËÉ¿ªÊÂ¼ş
+	// å¤„ç†é¼ æ ‡æ¾å¼€äº‹ä»¶
 	void mouseReleaseEvent(QMouseEvent* event) override
 	{
 		if (hasStartPoint)
 		{
 			if (mode == LineMode) {
-				endPoint = event->pos();  // Ö±ÏßÄ£Ê½ÏÂ£¬ËÉ¿ªÉè¶¨ÖÕµã
+				endPoint = event->pos();  // ç›´çº¿æ¨¡å¼ä¸‹ï¼Œæ¾å¼€è®¾å®šç»ˆç‚¹
 				lines.append(Line(startPoint, endPoint, lineWidth, currentLineColor, algorithm));
 			}
 			else if (mode == CircleMode) {
-				endPoint = event->pos();  // Ô²Ä£Ê½ÏÂ£¬¼ÆËã°ë¾¶
+				endPoint = event->pos();  // åœ†æ¨¡å¼ä¸‹ï¼Œè®¡ç®—åŠå¾„
 				radius = std::sqrt(std::pow(endPoint.x() - center.x(), 2) + std::pow(endPoint.y() - center.y(), 2));
 				arcs.append(Arc(center, radius, startAngle, endAngle, lineWidth, currentLineColor));
 			}
@@ -825,7 +825,7 @@ protected:
 				counter += 1;
 			}
 			else if (mode == ArcMode && counter == 1) {
-				endPoint = event->pos();  // Ô²»¡Ä£Ê½ÏÂ£¬¼ÆËã°ë¾¶
+				endPoint = event->pos();  // åœ†å¼§æ¨¡å¼ä¸‹ï¼Œè®¡ç®—åŠå¾„
 				radius = std::sqrt(std::pow(endPoint.x() - center.x(), 2) + std::pow(endPoint.y() - center.y(), 2));
 				arcs.append(Arc(center, radius, startAngle, endAngle, lineWidth, currentLineColor));
 				counter = 0;
@@ -834,10 +834,10 @@ protected:
 				if (drawingrect) {
 					drawingrect = false;
 					clipEndPoint = event->pos();
-					double xmin = std::min(clipStartPoint.x(), clipEndPoint.x());
-					double ymin = std::min(clipStartPoint.y(), clipEndPoint.y());
-					double xmax = std::max(clipStartPoint.x(), clipEndPoint.x());
-					double ymax = std::max(clipStartPoint.y(), clipEndPoint.y());
+					double xmin = min(clipStartPoint.x(), clipEndPoint.x());
+					double ymin = min(clipStartPoint.y(), clipEndPoint.y());
+					double xmax = max(clipStartPoint.x(), clipEndPoint.x());
+					double ymax = max(clipStartPoint.y(), clipEndPoint.y());
 
 					for (Line& line : lines) {
 						QLineF lineF(line.line);
@@ -863,19 +863,19 @@ protected:
 				}
 			}
 
-			drawing = true;         // »æÖÆÍê³É
-			update();               // ´¥·¢ÖØ»æ
-			hasStartPoint = false;  // ÖØÖÃ£¬ÔÊĞíÔÙ´Î»æÖÆĞÂµÄÏß¶Î
+			drawing = true;         // ç»˜åˆ¶å®Œæˆ
+			update();               // è§¦å‘é‡ç»˜
+			hasStartPoint = false;  // é‡ç½®ï¼Œå…è®¸å†æ¬¡ç»˜åˆ¶æ–°çš„çº¿æ®µ
 			drawing = false;
 		}
 	}
 
-	// ´¦ÀíÊó±êÒÆ¶¯ÊÂ¼ş
+	// å¤„ç†é¼ æ ‡ç§»åŠ¨äº‹ä»¶
 	void mouseMoveEvent(QMouseEvent* event) override {
 		if (hasStartPoint)
 		{
 			if (mode == LineMode) {
-				// ¸üĞÂÖÕµãÎªµ±Ç°Êó±êÎ»ÖÃ
+				// æ›´æ–°ç»ˆç‚¹ä¸ºå½“å‰é¼ æ ‡ä½ç½®
 				endPoint = event->pos();
 			}
 			else if (mode == CircleMode) {
@@ -889,12 +889,12 @@ protected:
 				QPoint currentPos = event->pos();
 				radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
 
-				// ¼ÆËãµ±Ç°Êó±êÎ»ÖÃÓëÔ²ĞÄµÄ½Ç¶È
+				// è®¡ç®—å½“å‰é¼ æ ‡ä½ç½®ä¸åœ†å¿ƒçš„è§’åº¦
 				float angleRad = atan2(currentPos.y() - center.y(), currentPos.x() - center.x());
-				endAngle = static_cast<int>(angleRad * 180.0 / M_PI); // ×ª»»Îª½Ç¶È
+				endAngle = static_cast<int>(angleRad * 180.0 / M_PI); // è½¬æ¢ä¸ºè§’åº¦
 
 				if (endAngle < 0) {
-					endAngle += 360;  // È·±£½Ç¶ÈÎªÕı
+					endAngle += 360;  // ç¡®ä¿è§’åº¦ä¸ºæ­£
 				}
 			else if (drawingrect) {
 				clipEndPoint = event->pos();
@@ -902,18 +902,18 @@ protected:
 			}
 			}
 
-			update(); // ´¥·¢ÖØ»æ
+			update(); // è§¦å‘é‡ç»˜
 		}
 	}
 
-	// ´¦ÀíË«»÷Êó±êÊÂ¼ş
+	// å¤„ç†åŒå‡»é¼ æ ‡äº‹ä»¶
 	void mouseDoubleClickEvent(QMouseEvent* event) override {
-		// Ë«»÷ÊÂ¼ş·â±Õµ±Ç°¶à±ßĞÎ
+		// åŒå‡»äº‹ä»¶å°é—­å½“å‰å¤šè¾¹å½¢
 		if (mode == PolygonMode) {
 			if (currentPolygon.points.size() > 2) {
-				currentPolygon.closePolygon(); // ·â±Õµ±Ç°¶à±ßĞÎ
-				polygons.push_back(currentPolygon); // ±£´æµ½¶à±ßĞÎÁĞ±í
-				currentPolygon = Polygon(); // ÖØÖÃµ±Ç°¶à±ßĞÎÒÔ¿ªÊ¼ĞÂµÄ»æÖÆ
+				currentPolygon.closePolygon(); // å°é—­å½“å‰å¤šè¾¹å½¢
+				polygons.push_back(currentPolygon); // ä¿å­˜åˆ°å¤šè¾¹å½¢åˆ—è¡¨
+				currentPolygon = Polygon(); // é‡ç½®å½“å‰å¤šè¾¹å½¢ä»¥å¼€å§‹æ–°çš„ç»˜åˆ¶
 				update();
 			}
 		}
@@ -923,47 +923,47 @@ public:
 	ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false), drawingrect(false),
 		radius(0), startAngle(0), endAngle(360)
 	{
-		// ÉèÖÃ±³¾°ÑÕÉ«
+		// è®¾ç½®èƒŒæ™¯é¢œè‰²
 		QPalette pal = this->palette();
-		pal.setColor(QPalette::Window, Qt::white); // ÕâÀïÉèÖÃ±³¾°ÑÕÉ«Îª°×É«
-		this->setAutoFillBackground(true);  // ÆôÓÃ×Ô¶¯Ìî³ä±³¾°
+		pal.setColor(QPalette::Window, Qt::white); // è¿™é‡Œè®¾ç½®èƒŒæ™¯é¢œè‰²ä¸ºç™½è‰²
+		this->setAutoFillBackground(true);  // å¯ç”¨è‡ªåŠ¨å¡«å……èƒŒæ™¯
 		this->setPalette(pal);
 
-		// »æÍ¼´°¿Ú´óĞ¡¡ı
+		// ç»˜å›¾çª—å£å¤§å°â†“
 		setFixedSize(800, 550);
 		initMAP(MAP);
 	}
 
-	// ÉèÖÃµ±Ç°»æÍ¼Ä£Ê½
+	// è®¾ç½®å½“å‰ç»˜å›¾æ¨¡å¼
 	void setDrawMode(DrawMode newMode) {
 		mode = newMode;
-		update();  // Ä£Ê½ÇĞ»»ºóÖØĞÂ»æÖÆ
+		update();  // æ¨¡å¼åˆ‡æ¢åé‡æ–°ç»˜åˆ¶
 	}
 
-	// ĞÂÔö£ºÉèÖÃÏßÌõ¿í¶ÈµÄº¯Êı
+	// æ–°å¢ï¼šè®¾ç½®çº¿æ¡å®½åº¦çš„å‡½æ•°
 	void setLineWidth(int width) {
 		lineWidth = width;
-		// update();  // Ã¿´Î¸Ä±ä¿í¶ÈÊ±£¬´¥·¢ÖØĞÂ»æÖÆ
+		// update();  // æ¯æ¬¡æ”¹å˜å®½åº¦æ—¶ï¼Œè§¦å‘é‡æ–°ç»˜åˆ¶
 	}
 
-	//  ĞÂÔö£ºÉèÖÃµ±Ç°ÏßÌõÑÕÉ«
+	//  æ–°å¢ï¼šè®¾ç½®å½“å‰çº¿æ¡é¢œè‰²
 	void setCurrentLineColor(QColor color) {
 		currentLineColor = color;
 		update();
 	}
 
-	//  ĞÂÔö£ºÉèÖÃµ±Ç°Ëã·¨
+	//  æ–°å¢ï¼šè®¾ç½®å½“å‰ç®—æ³•
 	void setAlgorithm(Algorithm algo)
 	{
 		algorithm = algo;
-		// update(); // ¸Ä±äËã·¨ºóÖØĞÂ»æÖÆ
+		// update(); // æ”¹å˜ç®—æ³•åé‡æ–°ç»˜åˆ¶
 	}
 
-	// ĞÂÔö£ºÉèÖÃÔ²»¡µÄÆğÊ¼½Ç¶ÈºÍ½áÊø½Ç¶È
+	// æ–°å¢ï¼šè®¾ç½®åœ†å¼§çš„èµ·å§‹è§’åº¦å’Œç»“æŸè§’åº¦
 	void setArcAngles(int start, int end) {
 		startAngle = start;
 		endAngle = end;
-		update();  // ´¥·¢ÖØ»æ
+		update();  // è§¦å‘é‡ç»˜
 	}
 };
 
@@ -971,18 +971,18 @@ class MainWindow : public QWidget {
 	// Q_OBJECT
 
 private:
-	ShapeDrawer* shapeDrawer;       // ¸ºÔğ»æÖÆĞÎ×´µÄÇøÓò
-	QComboBox* modeComboBox;        // ÓÃÓÚÑ¡Ôñ»æÖÆÄ£Ê½µÄ×éºÏ¿ò
-	QComboBox* algorithmComboBox;   // ĞÂÔö£ºÖ±ÏßËã·¨ Ñ¡Ôñ°´Å¥
-	QSlider* widthSlider;           // ĞÂÔö£º¿ØÖÆÏßÌõ¿í¶È »¬¶¯Ìõ
-	QPushButton* colorButton;       // ĞÂÔö£ºÑÕÉ« Ñ¡Ôñ°´Å¥
-	QComboBox* lineTypeComboBox;    // ĞÂÔö£ºÏßĞÍ Ñ¡Ôñ°´Å¥
+	ShapeDrawer* shapeDrawer;       // è´Ÿè´£ç»˜åˆ¶å½¢çŠ¶çš„åŒºåŸŸ
+	QComboBox* modeComboBox;        // ç”¨äºé€‰æ‹©ç»˜åˆ¶æ¨¡å¼çš„ç»„åˆæ¡†
+	QComboBox* algorithmComboBox;   // æ–°å¢ï¼šç›´çº¿ç®—æ³• é€‰æ‹©æŒ‰é’®
+	QSlider* widthSlider;           // æ–°å¢ï¼šæ§åˆ¶çº¿æ¡å®½åº¦ æ»‘åŠ¨æ¡
+	QPushButton* colorButton;       // æ–°å¢ï¼šé¢œè‰² é€‰æ‹©æŒ‰é’®
+	QComboBox* lineTypeComboBox;    // æ–°å¢ï¼šçº¿å‹ é€‰æ‹©æŒ‰é’®
 
 public:
 	MainWindow(QWidget* parent = nullptr) : QWidget(parent) {
-		shapeDrawer = new ShapeDrawer(this); // ´´½¨»æÍ¼ÇøÓò
+		shapeDrawer = new ShapeDrawer(this); // åˆ›å»ºç»˜å›¾åŒºåŸŸ
 
-		// ´´½¨Ñ¡Ôñ»æÍ¼Ä£Ê½µÄ×éºÏ¿ò
+		// åˆ›å»ºé€‰æ‹©ç»˜å›¾æ¨¡å¼çš„ç»„åˆæ¡†
 		modeComboBox = new QComboBox(this);
 		modeComboBox->addItem("Line", LineMode);
 		modeComboBox->addItem("Circle", CircleMode);
@@ -991,7 +991,7 @@ public:
 		modeComboBox->addItem("Fill", FillMode);
 		modeComboBox->addItem("Trim", TrimMode);
 
-		// ´´½¨ÏÂÀ­¿ò²¢Ìí¼ÓËã·¨Ñ¡Ïî
+		// åˆ›å»ºä¸‹æ‹‰æ¡†å¹¶æ·»åŠ ç®—æ³•é€‰é¡¹
 		algorithmComboBox = new QComboBox(this);
 		algorithmComboBox->addItem("Midpoint", Midpoint);
 		algorithmComboBox->addItem("Bresenham", Bresenham);
@@ -1000,37 +1000,37 @@ public:
 		algorithmComboBox->addItem("Cohen-Sutherland", SutherlandTrim);
 		algorithmComboBox->addItem("Midpoint Trim", MidTrim);
 
-		// ĞÂÔö£º´´½¨»¬¶¯Ìõ¿ØÖÆÏßÌõ¿í¶È
+		// æ–°å¢ï¼šåˆ›å»ºæ»‘åŠ¨æ¡æ§åˆ¶çº¿æ¡å®½åº¦
 		widthSlider = new QSlider(Qt::Horizontal, this);
-		widthSlider->setRange(1, 15);  // ÉèÖÃÏßÌõ¿í¶È·¶Î§Îª 1 µ½ 15 ÏñËØ
-		widthSlider->setValue(5);      // ³õÊ¼ÖµÎª 5 ÏñËØ
+		widthSlider->setRange(1, 15);  // è®¾ç½®çº¿æ¡å®½åº¦èŒƒå›´ä¸º 1 åˆ° 15 åƒç´ 
+		widthSlider->setValue(5);      // åˆå§‹å€¼ä¸º 5 åƒç´ 
 
-		// ´´½¨ÑÕÉ«Ñ¡Ôñ°´Å¥
+		// åˆ›å»ºé¢œè‰²é€‰æ‹©æŒ‰é’®
 		colorButton = new QPushButton("Choose Color", this);
 
-		// Ë®Æ½²¼¾Ö¹ÜÀíÆ÷£¨´Ë´¦ÔİÊ±Ö»ÓĞÓÒ²à£©
+		// æ°´å¹³å¸ƒå±€ç®¡ç†å™¨ï¼ˆæ­¤å¤„æš‚æ—¶åªæœ‰å³ä¾§ï¼‰
 		QVBoxLayout* rightLayout = new QVBoxLayout();
 		rightLayout->addWidget(new QLabel("Select Mode:"));
-		rightLayout->addWidget(modeComboBox);       // ĞÂÔö£º»æÖÆÄ£Ê½Ñ¡Ôñ
-		rightLayout->addWidget(algorithmComboBox);  // Ö±Ïß¶ÎËã·¨Ñ¡Ôñ
-		rightLayout->addWidget(widthSlider);        // ĞÂÔö£º½«»¬¶¯ÌõÌí¼Óµ½ÓÒ²à²¼¾Ö
-		rightLayout->addWidget(colorButton);        // ĞÂÔö£º½«ÑÕÉ«°´Å¥Ìí¼Óµ½²¼¾Ö
+		rightLayout->addWidget(modeComboBox);       // æ–°å¢ï¼šç»˜åˆ¶æ¨¡å¼é€‰æ‹©
+		rightLayout->addWidget(algorithmComboBox);  // ç›´çº¿æ®µç®—æ³•é€‰æ‹©
+		rightLayout->addWidget(widthSlider);        // æ–°å¢ï¼šå°†æ»‘åŠ¨æ¡æ·»åŠ åˆ°å³ä¾§å¸ƒå±€
+		rightLayout->addWidget(colorButton);        // æ–°å¢ï¼šå°†é¢œè‰²æŒ‰é’®æ·»åŠ åˆ°å¸ƒå±€
 		rightLayout->addStretch();
 
-		// ´¹Ö±²¼¾Ö¹ÜÀíÆ÷
+		// å‚ç›´å¸ƒå±€ç®¡ç†å™¨
 		QHBoxLayout* mainLayout = new QHBoxLayout(this);
 		mainLayout->addWidget(shapeDrawer);
 		mainLayout->addLayout(rightLayout);
 
-		// Á¬½ÓÏÂÀ­¿òµÄÑ¡Ôñ±ä»¯ĞÅºÅ
+		// è¿æ¥ä¸‹æ‹‰æ¡†çš„é€‰æ‹©å˜åŒ–ä¿¡å·
 		connect(algorithmComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
 			shapeDrawer->setAlgorithm(static_cast<Algorithm>(algorithmComboBox->currentData().toInt()));
 			});
 
-		// Á¬½Ó»¬¶¯ÌõµÄÖµ±ä»¯ĞÅºÅµ½ shapeDrawer µÄ setLineWidth º¯Êı
+		// è¿æ¥æ»‘åŠ¨æ¡çš„å€¼å˜åŒ–ä¿¡å·åˆ° shapeDrawer çš„ setLineWidth å‡½æ•°
 		connect(widthSlider, &QSlider::valueChanged, shapeDrawer, &ShapeDrawer::setLineWidth);
 
-		// Á¬½ÓÑÕÉ«Ñ¡Ôñ°´Å¥£¬´ò¿ªÑÕÉ«Ñ¡ÔñÆ÷
+		// è¿æ¥é¢œè‰²é€‰æ‹©æŒ‰é’®ï¼Œæ‰“å¼€é¢œè‰²é€‰æ‹©å™¨
 		connect(colorButton, &QPushButton::clicked, [=]() {
 			QColor color = QColorDialog::getColor(Qt::black, this, "Choose Line Color");
 			if (color.isValid()) {
@@ -1038,19 +1038,19 @@ public:
 			}
 			});
 
-		// Á¬½Ó×éºÏ¿òµÄÑ¡Ôñ±ä»¯ĞÅºÅ
-		// µ±Ñ¡ÔñÄ£Ê½¸Ä±äÊ±´¥·¢ÊÂ¼ş
+		// è¿æ¥ç»„åˆæ¡†çš„é€‰æ‹©å˜åŒ–ä¿¡å·
+		// å½“é€‰æ‹©æ¨¡å¼æ”¹å˜æ—¶è§¦å‘äº‹ä»¶
 		connect(modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) {
 			DrawMode selectedMode = static_cast<DrawMode>(modeComboBox->itemData(index).toInt());
 			shapeDrawer->setDrawMode(selectedMode);
 			if (selectedMode == CircleMode) {
-				// µ¯³ö¶Ô»°¿ò£¬ÊäÈëÆğÊ¼½Ç¶ÈºÍ½áÊø½Ç¶È
+				// å¼¹å‡ºå¯¹è¯æ¡†ï¼Œè¾“å…¥èµ·å§‹è§’åº¦å’Œç»“æŸè§’åº¦
 				bool ok;
 				int startAngle = QInputDialog::getInt(this, tr("Set Start Angle"), tr("Enter start angle (degrees):"), 0, 0, 360, 1, &ok);
 				if (ok) {
 					int endAngle = QInputDialog::getInt(this, tr("Set End Angle"), tr("Enter end angle (degrees):"), 360, 0, 360, 1, &ok);
 					if (ok) {
-						// ÉèÖÃ ShapeDrawer ÖĞµÄÆğÊ¼½Ç¶ÈºÍ½áÊø½Ç¶È
+						// è®¾ç½® ShapeDrawer ä¸­çš„èµ·å§‹è§’åº¦å’Œç»“æŸè§’åº¦
 						shapeDrawer->setArcAngles(startAngle, endAngle);
 					}
 				}
@@ -1059,7 +1059,7 @@ public:
 
 		setLayout(mainLayout);
 		setWindowTitle("Drawing with Algorithms");
-		// Ö÷´°¿Ú´óĞ¡¡ı
+		// ä¸»çª—å£å¤§å°â†“
 		setFixedSize(1000, 600);
 	}
 };
@@ -1069,7 +1069,7 @@ void initMAP(vector<vector<pointData>>& MAP) {
 		vector<pointData> row;
 		MAP.push_back(row);
 		for (int j = 0; j < 1000; j++) {
-			//¶ÔÃ¿Ò»ĞĞÖĞµÄÃ¿Ò»ÁĞ½øĞĞÌí¼Óµã
+			//å¯¹æ¯ä¸€è¡Œä¸­çš„æ¯ä¸€åˆ—è¿›è¡Œæ·»åŠ ç‚¹
 			pointData point(QPoint(i, j), Qt::white);
 			MAP[i].push_back(point);
 		}
