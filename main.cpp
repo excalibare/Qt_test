@@ -14,7 +14,16 @@
 #include "stdafx.h"
 using namespace std;
 
-//TODO:绘制弧线的 起始角 大于 结束角 功能为完善
+//TODO:绘制弧线的 起始角 大于 结束角 功能未完善
+
+// 用于SutherlandTrim
+enum OutCode {
+	INSIDE = 0, // 0000
+	LEFT = 1,   // 0001
+	RIGHT = 2,  // 0010
+	BOTTOM = 4, // 0100
+	TOP = 8     // 1000
+};
 
 // 用于实现填充（ pointData 与 MAP ）
 class pointData {
@@ -44,6 +53,7 @@ enum DrawMode {
 	CircleMode,
 	PolygonMode,
 	FillMode,
+	TrimMode
 };
 
 // 线段绘制算法
@@ -51,7 +61,9 @@ enum Algorithm {
 	DDA,
 	Bresenham,
 	Midpoint,
-	DashLine
+	DashLine,
+	SutherlandTrim,
+	MidTrim
 };
 
 // 结构体来存储每条线的信息，包括起点、终点和线条宽度
@@ -136,6 +148,7 @@ private:
 	int lineWidth = 5;          // 存储线条宽度
 	bool hasStartPoint = false; // 是否有起点（用于直线或圆弧）
 	bool drawing = false;       // 是否正在绘制（用来控制鼠标释放时的动作）
+	bool drawingrect = false;
 	QColor currentLineColor = Qt::black;    // 当前线条颜色
 
 	QPoint startPoint;          // 线段的起点
@@ -156,6 +169,11 @@ private:
 
 	std::vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
+
+	QPoint clipStartPoint;  // 裁剪窗口的起点
+	QPoint clipEndPoint;    // 裁剪窗口的终点
+
+	float XL = 0, XR = 800, YB = 0, YT = 550;
 
 protected:
 	// 重写绘制事件
@@ -273,6 +291,10 @@ protected:
 					drawMidpointArc(painter, center, radius, 0, endAngle);
 				}
 			}
+			else if (mode == TrimMode && hasStartPoint) {
+				painter.setPen(Qt::DashLine);  // 使用虚线表示裁剪区域
+				painter.drawRect(QRect(clipStartPoint, clipEndPoint));
+			}
 		}
 
 		// 如果有起点和终点，绘制实际线段
@@ -310,6 +332,12 @@ protected:
 				}
 			}
 		}
+
+		//如果当前是 TrimMode，绘制用户选择的裁剪矩形
+		if (mode == TrimMode && hasStartPoint) {
+			painter.setPen(Qt::DashLine);  // 使用虚线表示裁剪区域
+			painter.drawRect(QRect(clipStartPoint, clipEndPoint));
+		}
 	}
 
 	// 判定绘制的时候是否出界（针对MAP）
@@ -332,6 +360,12 @@ protected:
 			MAP[x][y].setColor(painter.pen().color());
 		}
 	};
+
+	void drawPixel(int x, int y, vector<vector<pointData>>& MAP2, QColor color) {
+		if (checkLegalPos(x, y, 800, 550)) {  // 确保像素位置合法
+			MAP2[x][y].setColor(color);  // 更新 MAP2 的颜色
+		}
+	}
 
 	// DDA 算法实现
 	void drawDDALine(QPainter& painter, QPoint p1, QPoint p2) {
@@ -612,6 +646,118 @@ protected:
 		}
 	}
 
+	// Sutherland 点编码
+	OutCode computeOutCode(double x, double y, double xmin, double ymin, double xmax, double ymax) {
+		OutCode code = INSIDE;
+
+		if (x < xmin) code = OutCode(code | LEFT);
+		else if (x > xmax) code = OutCode(code | RIGHT);
+		if (y < ymin) code = OutCode(code | BOTTOM);
+		else if (y > ymax) code = OutCode(code | TOP);
+
+		return code;
+	}
+
+	// Sutherland 裁剪算法
+	bool cohenSutherlandClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
+		double x0 = line.x1(), y0 = line.y1();
+		double x1 = line.x2(), y1 = line.y2();
+
+		OutCode outcode0 = computeOutCode(x0, y0, xmin, ymin, xmax, ymax);
+		OutCode outcode1 = computeOutCode(x1, y1, xmin, ymin, xmax, ymax);
+		bool accept = false;
+
+		while (true) {
+			if (!(outcode0 | outcode1)) {
+				// Both endpoints inside rectangle
+				accept = true;
+				break;
+			}
+			else if (outcode0 & outcode1) {
+				// Both endpoints outside rectangle
+				break;
+			}
+			else {
+				// Some segment of the line lies within the rectangle
+				double x, y;
+				// Pick an endpoint that is outside the rectangle
+				OutCode outcodeOut = outcode0 ? outcode0 : outcode1;
+
+				if (outcodeOut & TOP) {          // point above the clip rectangle
+					x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
+					y = ymax;
+				}
+				else if (outcodeOut & BOTTOM) { // point below the clip rectangle
+					x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+					y = ymin;
+				}
+				else if (outcodeOut & RIGHT) {  // point to the right of the clip rectangle
+					y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+					x = xmax;
+				}
+				else if (outcodeOut & LEFT) {   // point to the left of the clip rectangle
+					y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+					x = xmin;
+				}
+
+				if (outcodeOut == outcode0) {
+					x0 = x;
+					y0 = y;
+					outcode0 = computeOutCode(x0, y0, xmin, ymin, xmax, ymax);
+				}
+				else {
+					x1 = x;
+					y1 = y;
+					outcode1 = computeOutCode(x1, y1, xmin, ymin, xmax, ymax);
+				}
+			}
+		}
+		if (accept) {
+			line.setP1(QPointF(x0, y0));
+			line.setP2(QPointF(x1, y1));
+		}
+		return accept;
+	}
+
+
+	//中点算法裁剪
+	bool liangBarskyClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
+		double x0 = line.x1(), y0 = line.y1();
+		double x1 = line.x2(), y1 = line.y2();
+
+		double dx = x1 - x0;
+		double dy = y1 - y0;
+
+		double t0 = 0.0, t1 = 1.0;
+		double p[] = { -dx, dx, -dy, dy };
+		double q[] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
+
+		for (int i = 0; i < 4; i++) {
+			if (p[i] == 0 && q[i] < 0) {
+				// Line is parallel and outside the boundary
+				return false;
+			}
+
+			double r = q[i] / p[i];
+			if (p[i] < 0) {
+				if (r > t1) return false;
+				else if (r > t0) t0 = r;
+			}
+			else if (p[i] > 0) {
+				if (r < t0) return false;
+				else if (r < t1) t1 = r;
+			}
+		}
+
+		if (t0 > t1) return false;
+
+		line.setP1(QPointF(x0 + t0 * dx, y0 + t0 * dy));
+		line.setP2(QPointF(x0 + t1 * dx, y0 + t1 * dy));
+		return true;
+	}
+
+
+
 	// 处理鼠标按下事件
 	void mousePressEvent(QMouseEvent* event) override {
 		if (!hasStartPoint) {
@@ -651,6 +797,10 @@ protected:
 				fills.push_back(Fill(Point(event->pos().x(), event->pos().y()), currentLineColor));
 				shape.push_back(4);
 			}
+			else if (mode == TrimMode) {
+				clipStartPoint = event->pos();  // 记录鼠标按下的位置作为起点
+				drawingrect = true;
+			}
 
 			hasStartPoint = true;
 			drawing = false; // 初始化为不绘制实际直线
@@ -679,6 +829,38 @@ protected:
 				radius = std::sqrt(std::pow(endPoint.x() - center.x(), 2) + std::pow(endPoint.y() - center.y(), 2));
 				arcs.append(Arc(center, radius, startAngle, endAngle, lineWidth, currentLineColor));
 				counter = 0;
+			}
+			else if (event->button() == Qt::LeftButton) {
+				if (drawingrect) {
+					drawingrect = false;
+					clipEndPoint = event->pos();
+					double xmin = std::min(clipStartPoint.x(), clipEndPoint.x());
+					double ymin = std::min(clipStartPoint.y(), clipEndPoint.y());
+					double xmax = std::max(clipStartPoint.x(), clipEndPoint.x());
+					double ymax = std::max(clipStartPoint.y(), clipEndPoint.y());
+
+					for (Line& line : lines) {
+						QLineF lineF(line.line);
+						if (algorithm == SutherlandTrim) {
+							cohenSutherlandClip(lineF, xmin, ymin, xmax, ymax);
+						}
+						else if (algorithm == MidTrim) {
+							liangBarskyClip(lineF, xmin, ymin, xmax, ymax);
+						}
+						line.line.setP1(lineF.p1().toPoint());
+						line.line.setP2(lineF.p2().toPoint());
+					}
+					update();
+				}
+				else if (hasStartPoint) {
+					clipEndPoint = event->pos();
+					if (mode == LineMode) {
+						Line line(clipStartPoint, clipEndPoint, lineWidth, currentLineColor, DDA);
+						lines.push_back(line);
+					}
+					hasStartPoint = false;
+					update();
+				}
 			}
 
 			drawing = true;         // 绘制完成
@@ -714,6 +896,10 @@ protected:
 				if (endAngle < 0) {
 					endAngle += 360;  // 确保角度为正
 				}
+			else if (drawingrect) {
+				clipEndPoint = event->pos();
+				update();
+			}
 			}
 
 			update(); // 触发重绘
@@ -734,7 +920,7 @@ protected:
 	}
 
 public:
-	ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false),
+	ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false), drawingrect(false),
 		radius(0), startAngle(0), endAngle(360)
 	{
 		// 设置背景颜色
@@ -803,6 +989,7 @@ public:
 		modeComboBox->addItem("Arc", ArcMode);
 		modeComboBox->addItem("Shape", PolygonMode);
 		modeComboBox->addItem("Fill", FillMode);
+		modeComboBox->addItem("Trim", TrimMode);
 
 		// 创建下拉框并添加算法选项
 		algorithmComboBox = new QComboBox(this);
@@ -810,6 +997,8 @@ public:
 		algorithmComboBox->addItem("Bresenham", Bresenham);
 		algorithmComboBox->addItem("DDA", DDA);
 		algorithmComboBox->addItem("DashLine", DashLine);
+		algorithmComboBox->addItem("Cohen-Sutherland", SutherlandTrim);
+		algorithmComboBox->addItem("Midpoint Trim", MidTrim);
 
 		// 新增：创建滑动条控制线条宽度
 		widthSlider = new QSlider(Qt::Horizontal, this);
