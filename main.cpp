@@ -45,8 +45,9 @@ public:
 
 void initMAP(vector<vector<pointData>>& MAP); 
 void clearMAP(vector<vector<pointData>>& MAP);
+// QVector<QPoint> cropPolygon(const QVector<QPoint>& polygon, const QVector<QPoint>& cropPolygon);
 
-// 功能类型：直线或圆弧
+// 功能类型：直线、圆弧、多边形、填充、裁剪
 enum DrawMode {
 	LineMode,
 	ArcMode,
@@ -57,13 +58,18 @@ enum DrawMode {
 };
 
 // 线段绘制算法
-enum Algorithm {
+enum line_Algorithm {
 	DDA,
 	Bresenham,
 	Midpoint,
 	DashLine,
+};
+
+// 裁剪控制算法
+enum clip_Algorithm {
 	SutherlandTrim,
-	MidTrim
+	MidTrim,
+	CropPolygon
 };
 
 // 结构体来存储每条线的信息，包括起点、终点和线条宽度
@@ -71,10 +77,10 @@ struct Line {
 	QLine line;
 	int width;
 	QColor colour;  // lyc:6
-	Algorithm alg;
+	line_Algorithm alg;
 	// Qt::PenStyle penStyle; // 线型
 
-	Line(QPoint p1, QPoint p2, int w, QColor c, Algorithm a) : line(p1, p2), width(w), colour(c), alg(a) {}
+	Line(QPoint p1, QPoint p2, int w, QColor c, line_Algorithm a) : line(p1, p2), width(w), colour(c), alg(a) {}
 };
 
 // 结构体来存储每条圆弧的信息，包括圆心、半径、起始角和结束角
@@ -110,9 +116,10 @@ struct Edge {
 	float xMin, slopeReciprocal;
 };
 
+// 多边形
 class Polygon {
 public:
-	std::vector<Point> points; // 储存多边形的顶点
+	vector<Point> points; // 储存多边形的顶点
 	QColor color;
 	Polygon() {}
 
@@ -131,6 +138,7 @@ public:
 	}
 };
 
+// 填充（种子点）
 class Fill {
 public:
 	Point point; // 储存种子点
@@ -142,38 +150,40 @@ public:
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
+	// 全局
 	DrawMode mode;              // 当前绘制模式：直线 或 圆弧
 	vector<vector<pointData>> MAP;
-
 	int lineWidth = 5;          // 存储线条宽度
-	bool hasStartPoint = false; // 是否有起点（用于直线或圆弧）
+	bool hasStartPoint = false; // 是否有起点
 	bool drawing = false;       // 是否正在绘制（用来控制鼠标释放时的动作）
-	bool drawingrect = false;
 	QColor currentLineColor = Qt::black;    // 当前线条颜色
+	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形
+	float XL = 0, XR = 800, YB = 0, YT = 550;
 
+	// 直线段
 	QPoint startPoint;          // 线段的起点
 	QPoint endPoint;            // 线段的终点
-	Algorithm algorithm = Midpoint;  // 当前选择的直线段算法
+	line_Algorithm line_algo = Midpoint;  // 当前选择的直线段算法
+	QVector<Line> lines;        // 存储已绘制的直线段
 
+	// 圆、圆弧
 	QPoint center;              // 圆心（对于圆弧）
 	int radius;                 // 半径（对于圆弧）
 	int startAngle, endAngle;   // 圆弧的起始和终止角度
 	int counter = 0;            // 计数（点击鼠标次数，0-2循环）
-
-	vector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形
 	QVector<Arc> arcs;          // 存储已绘制的直线段
-	QVector<Line> lines;        // 存储已绘制的直线段
-
-	std::vector<Polygon> polygons; // 存储多个多边形
+	
+	// 多边形
+	vector<Polygon> polygons; // 存储多个多边形
 	Polygon currentPolygon; // 当前正在绘制的多边形
-
-	std::vector<Fill> fills; // 存储多个多边形
+	vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
 
+	// 裁剪
 	QPoint clipStartPoint;  // 裁剪窗口的起点
 	QPoint clipEndPoint;    // 裁剪窗口的终点
-
-	float XL = 0, XR = 800, YB = 0, YT = 550;
+	clip_Algorithm  clip_algo = SutherlandTrim;// 当前选择的直线段裁剪算法
+	QVector<QPoint>cropPolygon; // 裁切多边形
 
 protected:
 	// 重写绘制事件
@@ -239,6 +249,7 @@ protected:
 					scanlineFill(painter, polygon);
 				}
 			}
+			// 重绘填充区域
 			else if (shape.at(c) == 4 && fills.size() > i4) {
 				const Fill& fill = fills.at(i4++);
 				QPen pen;
@@ -265,20 +276,10 @@ protected:
 			painter.setPen(pen);
 
 			if (mode == LineMode) {
-				switch (algorithm) {
-				case DDA:
-					drawDDALine(painter, startPoint, endPoint);
-					break;
-				case Bresenham:
-					drawBresenhamLine(painter, startPoint, endPoint);
-					break;
-				case Midpoint:
-					drawMidpointLine(painter, startPoint, endPoint);
-					break;
-				case DashLine:
-					drawDashLine(painter, startPoint, endPoint);
-					break;
-				}
+				if (line_algo == DashLine)
+					drawPreviewDash(painter, startPoint, endPoint);
+				else
+					drawPreviewSolid(painter, startPoint, endPoint);
 			}
 			else if (mode == CircleMode) {
 				drawMidpointArc(painter, center, radius, startAngle, endAngle);
@@ -291,9 +292,20 @@ protected:
 					drawMidpointArc(painter, center, radius, 0, endAngle);
 				}
 			}
-			else if (mode == TrimMode && hasStartPoint) {
-				painter.setPen(Qt::DashLine);  // 使用虚线表示裁剪区域
-				painter.drawRect(QRect(clipStartPoint, clipEndPoint));
+			else if (mode == TrimMode) {
+				// 更新预览用画笔
+				pen.setWidth(2);
+				painter.setPen(pen);
+				// 获取预览裁剪矩形框的四个顶点
+				QPoint top_left(min(clipStartPoint.x(), clipEndPoint.x()), max(clipStartPoint.y(), clipEndPoint.y()));
+				QPoint top_right(max(clipStartPoint.x(), clipEndPoint.x()), max(clipStartPoint.y(), clipEndPoint.y()));
+				QPoint bottom_left(min(clipStartPoint.x(), clipEndPoint.x()), min(clipStartPoint.y(), clipEndPoint.y()));
+				QPoint bottom_right(max(clipStartPoint.x(), clipEndPoint.x()), min(clipStartPoint.y(), clipEndPoint.y()));
+				// 绘制预览矩形框
+				drawPreviewDash(painter, top_left, top_right);
+				drawPreviewDash(painter, top_right, bottom_right);
+				drawPreviewDash(painter, bottom_right, bottom_left);
+				drawPreviewDash(painter, bottom_left, top_left);
 			}
 		}
 
@@ -305,7 +317,7 @@ protected:
 			painter.setPen(pen);
 
 			if (mode == LineMode) {
-				switch (algorithm) {
+				switch (line_algo) {
 				case DDA:
 					drawDDALine(painter, startPoint, endPoint);
 					break;
@@ -332,17 +344,12 @@ protected:
 				}
 			}
 		}
-
-		//如果当前是 TrimMode，绘制用户选择的裁剪矩形
-		if (mode == TrimMode && hasStartPoint) {
-			painter.setPen(Qt::DashLine);  // 使用虚线表示裁剪区域
-			painter.drawRect(QRect(clipStartPoint, clipEndPoint));
-		}
 	}
 
 	// 判定绘制的时候是否出界（针对MAP）
 	// 写fill的lyc：谢谢你提供了这个东西
 	// lyc：不是，如果width和height没有默认参数我为什么不自己写判断
+	// lty: 那你自己设置个默认参数嘛，就自己动手丰衣足食，懂吧
 	bool checkLegalPos(int x, int y, int width, int height) {
 		if (x >= 0 && x <= width && y >= 0 && y <= height) {
 			return true;
@@ -361,9 +368,75 @@ protected:
 		}
 	};
 
+	// 这是...？什么？不知道！就放着吧~
 	void drawPixel(int x, int y, vector<vector<pointData>>& MAP2, QColor color) {
 		if (checkLegalPos(x, y, 800, 550)) {  // 确保像素位置合法
 			MAP2[x][y].setColor(color);  // 更新 MAP2 的颜色
+		}
+	}
+
+	// 绘制预览实线(不更新MAP)
+	void drawPreviewSolid(QPainter& painter, QPoint p1, QPoint p2)
+	{
+		int x1 = p1.x();
+		int y1 = p1.y();
+		int x2 = p2.x();
+		int y2 = p2.y();
+		int dx = abs(x2 - x1);
+		int dy = abs(y2 - y1);
+		int sx = (x1 < x2) ? 1 : -1;
+		int sy = (y1 < y2) ? 1 : -1;
+		int err = dx - dy;
+
+		while (x1 != x2 || y1 != y2) {
+			drawPixel(x1, y1, painter);
+			int e2 = 2 * err;
+			if (e2 > -dy) {
+				err -= dy;
+				x1 += sx;
+			}
+			if (e2 < dx) {
+				err += dx;
+				y1 += sy;
+			}
+		}
+	}
+
+	// 绘制预览虚线(不更新MAP)
+	void drawPreviewDash(QPainter& painter, QPoint p1, QPoint p2)
+	{
+		int x1 = p1.x();
+		int y1 = p1.y();
+		int x2 = p2.x();
+		int y2 = p2.y();
+		int dx = abs(x2 - x1);
+		int dy = abs(y2 - y1);
+		int sx = (x1 < x2) ? 1 : -1;
+		int sy = (y1 < y2) ? 1 : -1;
+		int err = dx - dy;
+
+		int dashLength = 8;   // 每段虚线的长度
+		int gapLength = 8;    // 每段空白的长度
+		int totalLength = dashLength + gapLength;  // 总周期长度
+		int stepCount = 0;    // 计数步数，用于决定是否绘制
+
+		while (x1 != x2 || y1 != y2) {
+			// 只在虚线的部分绘制点
+			if (stepCount % totalLength < dashLength) {
+				painter.drawPoint(x1, y1);
+			}
+
+			int e2 = 2 * err;
+			if (e2 > -dy) {
+				err -= dy;
+				x1 += sx;
+			}
+			if (e2 < dx) {
+				err += dx;
+				y1 += sy;
+			}
+
+			stepCount++;  // 增加步数计数器
 		}
 	}
 
@@ -551,13 +624,13 @@ protected:
 		// 计算最小和最大 y 坐标
 		int ymin = polygon.points[0].y, ymax = polygon.points[0].y;
 		for (const Point& p : polygon.points) {
-			ymin = std::min(ymin, p.y);
-			ymax = std::max(ymax, p.y);
+			ymin = min(ymin, p.y);
+			ymax = max(ymax, p.y);
 		}
 
 		// 对每条扫描线从 ymin 到 ymax 进行处理
 		for (int y = ymin; y <= ymax; ++y) {
-			std::vector<int> intersections;
+			vector<int> intersections;
 
 			// 计算每条边与当前扫描线的交点
 			for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
@@ -571,7 +644,7 @@ protected:
 			}
 
 			// 对交点进行排序
-			std::sort(intersections.begin(), intersections.end());
+			sort(intersections.begin(), intersections.end());
 
 			// 画出交点之间的线段(预览版，故使用Qt的函数)
 			for (size_t i = 0; i < intersections.size(); i += 2) {
@@ -580,6 +653,7 @@ protected:
 		}
 	}
 
+	// 种子点填充算法
 	void fillShape(QPainter& painter, Point point, QColor newColor) {
 		//将点击位置的颜色设置为需要替换的颜色
 		QColor oldColor = MAP[point.Getx()][point.Gety()].getColor();
@@ -658,7 +732,7 @@ protected:
 		return code;
 	}
 
-	// Sutherland 裁剪算法
+	// Sutherland 裁剪直线段算法
 	bool cohenSutherlandClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
 		double x0 = line.x1(), y0 = line.y1();
 		double x1 = line.x2(), y1 = line.y2();
@@ -719,8 +793,7 @@ protected:
 		return accept;
 	}
 
-
-	//中点算法裁剪
+	// 中点算法裁剪直线段
 	bool liangBarskyClip(QLineF& line, double xmin, double ymin, double xmax, double ymax) {
 		double x0 = line.x1(), y0 = line.y1();
 		double x1 = line.x2(), y1 = line.y2();
@@ -799,8 +872,16 @@ protected:
 			}
 			else if (mode == TrimMode) {
 				clipStartPoint = event->pos();  // 记录鼠标按下的位置作为起点
-				drawingrect = true;
+				clipEndPoint = clipStartPoint;
 			}
+			//else if (mode == TrimMode && clip_algo == CropPolygon) {
+			//	QPoint a;
+			//	a.setX(event->pos().x());
+			//	a.setY(event->pos().y());
+			//	cropPolygon.append(a);
+			//	shape.push_back(5);
+			//	update();
+			//}
 
 			hasStartPoint = true;
 			drawing = false; // 初始化为不绘制实际直线
@@ -814,7 +895,7 @@ protected:
 		{
 			if (mode == LineMode) {
 				endPoint = event->pos();  // 直线模式下，松开设定终点
-				lines.append(Line(startPoint, endPoint, lineWidth, currentLineColor, algorithm));
+				lines.append(Line(startPoint, endPoint, lineWidth, currentLineColor, line_algo));
 			}
 			else if (mode == CircleMode) {
 				endPoint = event->pos();  // 圆模式下，计算半径
@@ -830,36 +911,26 @@ protected:
 				arcs.append(Arc(center, radius, startAngle, endAngle, lineWidth, currentLineColor));
 				counter = 0;
 			}
-			else if (event->button() == Qt::LeftButton) {
-				if (drawingrect) {
-					drawingrect = false;
-					clipEndPoint = event->pos();
-					double xmin = min(clipStartPoint.x(), clipEndPoint.x());
-					double ymin = min(clipStartPoint.y(), clipEndPoint.y());
-					double xmax = max(clipStartPoint.x(), clipEndPoint.x());
-					double ymax = max(clipStartPoint.y(), clipEndPoint.y());
+			else if (mode == TrimMode) {
+				// drawingrect = false;
+				clipEndPoint = event->pos();
+				// 确定裁剪矩形的左上、右下两个顶点
+				double xmin = min(clipStartPoint.x(), clipEndPoint.x());
+				double ymin = min(clipStartPoint.y(), clipEndPoint.y());
+				double xmax = max(clipStartPoint.x(), clipEndPoint.x());
+				double ymax = max(clipStartPoint.y(), clipEndPoint.y());
 
-					for (Line& line : lines) {
-						QLineF lineF(line.line);
-						if (algorithm == SutherlandTrim) {
-							cohenSutherlandClip(lineF, xmin, ymin, xmax, ymax);
-						}
-						else if (algorithm == MidTrim) {
-							liangBarskyClip(lineF, xmin, ymin, xmax, ymax);
-						}
-						line.line.setP1(lineF.p1().toPoint());
-						line.line.setP2(lineF.p2().toPoint());
+				// 更新在裁剪框内的直线的起始与结束端点
+				for (Line& line : lines) {
+					QLineF lineF(line.line);
+					if (clip_algo == SutherlandTrim) {
+						cohenSutherlandClip(lineF, xmin, ymin, xmax, ymax);
 					}
-					update();
-				}
-				else if (hasStartPoint) {
-					clipEndPoint = event->pos();
-					if (mode == LineMode) {
-						Line line(clipStartPoint, clipEndPoint, lineWidth, currentLineColor, DDA);
-						lines.push_back(line);
+					else if (clip_algo == MidTrim) {
+						liangBarskyClip(lineF, xmin, ymin, xmax, ymax);
 					}
-					hasStartPoint = false;
-					update();
+					line.line.setP1(lineF.p1().toPoint());
+					line.line.setP2(lineF.p2().toPoint());
 				}
 			}
 
@@ -896,10 +967,11 @@ protected:
 				if (endAngle < 0) {
 					endAngle += 360;  // 确保角度为正
 				}
-			else if (drawingrect) {
-				clipEndPoint = event->pos();
-				update();
 			}
+			else if (mode == TrimMode) {
+				// 这个else if为什么要放在 ArcMode 里面？？？
+				// 放里面当然用不了重绘啦
+				clipEndPoint = event->pos();
 			}
 
 			update(); // 触发重绘
@@ -919,8 +991,55 @@ protected:
 		}
 	}
 
+	// 处理按键事件
+	void keyPressEvent(QKeyEvent* event) override {
+		if (event->key() == Qt::Key_Escape) {
+			// 裁切多边形绘制结束
+			if (mode == TrimMode && clip_algo == CropPolygon) {
+				//	update();
+				//	QVector<QVector<QPoint>> newPolygon;
+				//	// QVector<QPen> newBrush;
+				//	vector<int> deleteIndex;
+				//	int k = 0;
+				//	for (int i = 0; i < shape.length(); i++) {
+				//		if (shape.at(i) == 3) {
+				//			// QPen pen = _brush.at(i);
+				//			QVector<QPoint> polygon = crop_Polygon(polygons.at(k++).points, cropPolygon);
+				//			if (polygon.length() >= 3) {
+				//				// 如果返回的多边形的长度大于等于3，则说明裁切后的多边形不为空，将他们追加到新的多边形数组中
+				//				newPolygon.append(polygon);
+				//				// newBrush.append(pen);
+				//			}
+				//			deleteIndex.push_back(i);
+				//		}
+				//	}
+				//	sort(deleteIndex.rbegin(), deleteIndex.rend());
+				//	for (int i = 0; i < deleteIndex.size(); ++i) {
+				//		_polygon.remove(deleteIndex.size() - i - 1);
+				//		shape.remove(deleteIndex[i]);
+				//		// _brush.remove(deleteIndex[i]);
+				//	}
+				//	// 找到裁切多边形，并删除它
+				//	for (int i = 0; i < shape.length(); i++) {
+				//		if (shape.at(i) == 8) {
+				//			shape.remove(i);
+				//			// _brush.remove(i);
+				//		}
+				//	}
+				//	cropPolygon.clear();
+				//	for (int i = 0; i < newPolygon.length(); ++i) {
+				//		_polygon.append(newPolygon.at(i));
+				//		// _brush.append(newBrush.at(i));
+				//		shape.append(7);
+				//		update();
+				//	}
+				//}
+			}
+		}
+	}
+
 public:
-	ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false), drawingrect(false),
+	ShapeDrawer(QWidget* parent = nullptr) : QWidget(parent), mode(LineMode), hasStartPoint(false), drawing(false),
 		radius(0), startAngle(0), endAngle(360)
 	{
 		// 设置背景颜色
@@ -953,10 +1072,16 @@ public:
 	}
 
 	//  新增：设置当前算法
-	void setAlgorithm(Algorithm algo)
+	void setAlgorithm(line_Algorithm algo)
 	{
-		algorithm = algo;
+		line_algo = algo;
 		// update(); // 改变算法后重新绘制
+	}
+
+	// 新增设置裁剪直线段算法
+	void setclipAlgorithm(clip_Algorithm algo)
+	{
+		clip_algo = algo;
 	}
 
 	// 新增：设置圆弧的起始角度和结束角度
@@ -973,7 +1098,8 @@ class MainWindow : public QWidget {
 private:
 	ShapeDrawer* shapeDrawer;       // 负责绘制形状的区域
 	QComboBox* modeComboBox;        // 用于选择绘制模式的组合框
-	QComboBox* algorithmComboBox;   // 新增：直线算法 选择按钮
+	QComboBox* line_algorithmComboBox;   // 新增：直线算法 选择按钮
+	QComboBox* clip_algorithmComboBox;	// 新增：直线段裁剪算法 选择按钮
 	QSlider* widthSlider;           // 新增：控制线条宽度 滑动条
 	QPushButton* colorButton;       // 新增：颜色 选择按钮
 	QComboBox* lineTypeComboBox;    // 新增：线型 选择按钮
@@ -992,27 +1118,34 @@ public:
 		modeComboBox->addItem("Trim", TrimMode);
 
 		// 创建下拉框并添加算法选项
-		algorithmComboBox = new QComboBox(this);
-		algorithmComboBox->addItem("Midpoint", Midpoint);
-		algorithmComboBox->addItem("Bresenham", Bresenham);
-		algorithmComboBox->addItem("DDA", DDA);
-		algorithmComboBox->addItem("DashLine", DashLine);
-		algorithmComboBox->addItem("Cohen-Sutherland", SutherlandTrim);
-		algorithmComboBox->addItem("Midpoint Trim", MidTrim);
+		line_algorithmComboBox = new QComboBox(this);
+		line_algorithmComboBox->addItem("Midpoint", Midpoint);
+		line_algorithmComboBox->addItem("Bresenham", Bresenham);
+		line_algorithmComboBox->addItem("DDA", DDA);
+		line_algorithmComboBox->addItem("DashLine", DashLine);
+
+		// 创建下拉框并添加裁剪算法选项
+		clip_algorithmComboBox = new QComboBox(this);
+		clip_algorithmComboBox->addItem("Cohen-Sutherland", SutherlandTrim);
+		clip_algorithmComboBox->addItem("Midpoint Trim", MidTrim);
 
 		// 新增：创建滑动条控制线条宽度
 		widthSlider = new QSlider(Qt::Horizontal, this);
 		widthSlider->setRange(1, 15);  // 设置线条宽度范围为 1 到 15 像素
 		widthSlider->setValue(5);      // 初始值为 5 像素
 
-		// 创建颜色选择按钮
-		colorButton = new QPushButton("Choose Color", this);
+		// 创建颜色选择按钮 
+		colorButton = new QPushButton("Choose Painter Color", this);
 
 		// 水平布局管理器（此处暂时只有右侧）
 		QVBoxLayout* rightLayout = new QVBoxLayout();
-		rightLayout->addWidget(new QLabel("Select Mode:"));
+		rightLayout->addWidget(new QLabel("Select Painting Mode:"));
 		rightLayout->addWidget(modeComboBox);       // 新增：绘制模式选择
-		rightLayout->addWidget(algorithmComboBox);  // 直线段算法选择
+		rightLayout->addWidget(new QLabel("Select Line Mode:"));
+		rightLayout->addWidget(line_algorithmComboBox);  // 新增：直线段算法选择
+		rightLayout->addWidget(new QLabel("Select Clip Mode:"));
+		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择
+		rightLayout->addWidget(new QLabel("Select Line Width:"));
 		rightLayout->addWidget(widthSlider);        // 新增：将滑动条添加到右侧布局
 		rightLayout->addWidget(colorButton);        // 新增：将颜色按钮添加到布局
 		rightLayout->addStretch();
@@ -1023,8 +1156,13 @@ public:
 		mainLayout->addLayout(rightLayout);
 
 		// 连接下拉框的选择变化信号
-		connect(algorithmComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
-			shapeDrawer->setAlgorithm(static_cast<Algorithm>(algorithmComboBox->currentData().toInt()));
+		connect(line_algorithmComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
+			shapeDrawer->setAlgorithm(static_cast<line_Algorithm>(line_algorithmComboBox->currentData().toInt()));
+			});
+
+		// 连接下拉框的选择变化信号
+		connect(clip_algorithmComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
+			shapeDrawer->setclipAlgorithm(static_cast<clip_Algorithm>(clip_algorithmComboBox->currentData().toInt()));
 			});
 
 		// 连接滑动条的值变化信号到 shapeDrawer 的 setLineWidth 函数
@@ -1083,6 +1221,78 @@ void clearMAP(vector<vector<pointData>>& MAP) {
 		}
 	}
 }
+
+//bool outsideOneEdgeOfPolygon(QVector<QPoint> polygon, QPoint p, int x) {
+//	QPoint p1 = polygon[x];
+//	QPoint p2 = polygon[(x + 1) % int(polygon.length())];
+//	QPoint p3 = polygon[(x + 2) % int(polygon.length())];
+//	int a = p2.y() - p1.y();
+//	int b = p1.x() - p2.x();
+//	int c = p2.x() * p1.y() - p1.x() * p2.y();
+//	if (a < 0) {
+//		a = -a;
+//		b = -b;
+//		c = -c;
+//	}
+//	int pointD = a * p.x() + b * p.y() + c;
+//	int polyNextPointD = a * p3.x() + b * p3.y() + c;
+//	if (pointD * polyNextPointD >= 0) {
+//		return true;
+//	}
+//	else {
+//		return false;
+//	}
+//}
+//
+//QPoint intersection(QPoint p1, QPoint p2, QPoint p3, QPoint p4) {
+//	QPoint p;
+//	double a1, b1, c1, a2, b2, c2, x, y;
+//	a1 = p2.y() - p1.y();
+//	b1 = p1.x() - p2.x();
+//	c1 = p2.x() * p1.y() - p1.x() * p2.y();
+//	a2 = p4.y() - p3.y();
+//	b2 = p3.x() - p4.x();
+//	c2 = p4.x() * p3.y() - p3.x() * p4.y();
+//	x = int((b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1));
+//	y = int((a2 * c1 - a1 * c2) / (a1 * b2 - a2 * b1));
+//	if ((x <= max(p1.x(), p2.x()) && x >= min(p1.x(), p2.x()))) {
+//		p.setX(x);
+//		p.setY(y);
+//		return p;
+//	}
+//	else {
+//		return QPoint(-1, -1);
+//	}
+//}
+//
+//QVector<QPoint> crop_Polygon(const QVector<QPoint>& polygon, const QVector<QPoint>& cropPolygon) {
+//	QVector<QPoint> result, originalPolygon = polygon;
+//	for (int i = 0; i < cropPolygon.length(); ++i) {
+//		result.clear();
+//		for (int j = 0; j < originalPolygon.length(); ++j) {
+//			QPoint p1 = originalPolygon[j];
+//			QPoint p2 = originalPolygon[(j + 1) % int(originalPolygon.length())];
+//			bool p1_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p1, i);
+//			bool p2_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p2, i);
+//			if (p1_inPolygonEdge && p2_inPolygonEdge) {
+//				result.append(p2);
+//			}
+//			else if (p1_inPolygonEdge || p2_inPolygonEdge) {
+//				QPoint k1 = cropPolygon[i];
+//				QPoint k2 = cropPolygon[(i + 1) % int(cropPolygon.length())];
+//				QPoint temp = intersection(p1, p2, k1, k2);
+//				if (temp.x() != -1 && temp.y() != -1) {
+//					result.append(temp);
+//				}
+//			}
+//			if (!p1_inPolygonEdge && p2_inPolygonEdge) {
+//				result.append(p2);
+//			}
+//		}
+//		originalPolygon = result;
+//	}
+//	return result;
+//}
 
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);
