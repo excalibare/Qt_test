@@ -15,6 +15,7 @@
 using namespace std;
 
 //TODO:绘制弧线的 起始角 大于 结束角 功能未完善
+//调试的时候我把fill在选单里注释掉了，我把fill在选单里注释掉了，我把fill在选单里注释掉了，好困（？）
 
 // 用于SutherlandTrim
 enum OutCode {
