@@ -43,7 +43,7 @@ public:
 	}
 };
 
-void initMAP(vector<vector<pointData>>& MAP); 
+void initMAP(vector<vector<pointData>>& MAP);
 void clearMAP(vector<vector<pointData>>& MAP);
 // QVector<QPoint> cropPolygon(const QVector<QPoint>& polygon, const QVector<QPoint>& cropPolygon);
 
@@ -172,7 +172,7 @@ private:
 	int startAngle, endAngle;   // 圆弧的起始和终止角度
 	int counter = 0;            // 计数（点击鼠标次数，0-2循环）
 	QVector<Arc> arcs;          // 存储已绘制的直线段
-	
+
 	// 多边形
 	vector<Polygon> polygons; // 存储多个多边形
 	Polygon currentPolygon; // 当前正在绘制的多边形
@@ -350,7 +350,9 @@ protected:
 	// 写fill的lyc：谢谢你提供了这个东西
 	// lyc：不是，如果width和height没有默认参数我为什么不自己写判断
 	// lty: 那你自己设置个默认参数嘛，就自己动手丰衣足食，懂吧
-	bool checkLegalPos(int x, int y, int width, int height) {
+	// lyc：不是你真回我消息了
+	// lyc：那我改了
+	bool checkLegalPos(int x, int y, int width = 800, int height = 550) {
 		if (x >= 0 && x <= width && y >= 0 && y <= height) {
 			return true;
 		}
@@ -369,6 +371,9 @@ protected:
 	};
 
 	// 这是...？什么？不知道！就放着吧~
+	// lyc：遥我知道是你的评论
+	// lyc：？？？你看看自己在说什么
+	// lyc：等我写完裁剪多边形让我看下是啥时候加进去的
 	void drawPixel(int x, int y, vector<vector<pointData>>& MAP2, QColor color) {
 		if (checkLegalPos(x, y, 800, 550)) {  // 确保像素位置合法
 			MAP2[x][y].setColor(color);  // 更新 MAP2 的颜色
@@ -613,7 +618,7 @@ protected:
 		float angle = atan2(y, x);
 		if (angle < 0) angle += 2 * M_PI;
 		if (angle >= startRad && angle <= endRad) {
-			drawPixel(center.x() + x, center.y() + y,painter);
+			drawPixel(center.x() + x, center.y() + y, painter);
 		}
 	}
 
@@ -688,14 +693,12 @@ protected:
 				while (MAP[x][y].getColor() == oldColor && x < 799) {
 					spanNeedFill = true;
 					x++;
-
 				}
 				if (spanNeedFill) {
 					pt.x = x - 1;
 					pt.y = y;
 					stack.push(pt);
 					spanNeedFill = false;
-
 				}
 				while (MAP[x][y].getColor() != oldColor && x < xr)x++;
 			}
@@ -706,14 +709,12 @@ protected:
 				while (MAP[x][y].getColor() == oldColor && x < 599) {
 					spanNeedFill = true;
 					x++;
-
 				}
 				if (spanNeedFill) {
 					pt.x = x - 1;
 					pt.y = y;
 					stack.push(pt);
 					spanNeedFill = false;
-
 				}
 				while (MAP[x][y].getColor() != oldColor && x < xr)x++;
 			}
@@ -828,8 +829,6 @@ protected:
 		line.setP2(QPointF(x0 + t1 * dx, y0 + t1 * dy));
 		return true;
 	}
-
-
 
 	// 处理鼠标按下事件
 	void mousePressEvent(QMouseEvent* event) override {
@@ -1051,6 +1050,13 @@ public:
 		// 绘图窗口大小↓
 		setFixedSize(800, 550);
 		initMAP(MAP);
+
+		// 为四边绘制四条直线，防止填充溢出
+		std::vector<vector<int>> tem = { {0,0},{799,0},{799,549}, {0,549},{0,0} };
+		for (int i = 0; i < 4; ++i) {
+			lines.append(Line(QPoint(tem[i][0], tem[i][1]), QPoint(tem[i + 1][0], tem[i + 1][1]), 1, Qt::black, Midpoint));
+			shape.append(1);
+		}
 	}
 
 	// 设置当前绘图模式
@@ -1134,7 +1140,7 @@ public:
 		widthSlider->setRange(1, 15);  // 设置线条宽度范围为 1 到 15 像素
 		widthSlider->setValue(5);      // 初始值为 5 像素
 
-		// 创建颜色选择按钮 
+		// 创建颜色选择按钮
 		colorButton = new QPushButton("Choose Painter Color", this);
 
 		// 水平布局管理器（此处暂时只有右侧）
