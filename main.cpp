@@ -119,6 +119,16 @@ public:
 		return y;
 	}
 
+	constexpr inline int& rx() noexcept
+	{
+		return x;
+	}
+
+	constexpr inline int& ry() noexcept
+	{
+		return y;
+	}
+
 	// 重载，支持相减
 	Point operator-(const Point& b) {
 		Point ret;
@@ -170,10 +180,9 @@ public:
 	}
 
 	Polygon operator=(const Polygon& poly) {
-		Polygon res;
-		res.points = poly.points;
-		res.color = poly.color;
-		return res;
+		this->points = poly.points;
+		this->color = poly.color;
+		return *this;
 	}
 
 	int length() {
@@ -278,7 +287,7 @@ public:
 		return this->tr[index];
 	}
 
-	Point operator*(Point q) {       //当右乘一个QPoint类时，定义为施加变换，返回一个变换后的QPoint
+	Point operator*(Point q) {       //当右乘一个Point类时，定义为施加变换，返回一个变换后的QPoint
 		float QMatrix[3] = { (float)-reference_x,(float)-reference_y,1 };//准备点的向量
 		float QTransed[3] = { (float)reference_x,(float)reference_y,0 };//准备计算完后的点向量
 		QMatrix[0] += q.x;          //这里是加而不是赋值，包括上文准备点向量时填入了参考点相关数据
@@ -291,8 +300,8 @@ public:
 			}
 			QTransed[i] += sum;
 		}
-		q.x = (int)QTransed[0] + 0.5;//将得到的结果取出，取整，修改QPoint并返回
-		q.y = (int)QTransed[1] + 0.5;
+		q.rx() = (int)QTransed[0] + 0.5;//将得到的结果取出，取整，修改QPoint并返回
+		q.ry() = (int)QTransed[1] + 0.5;
 		return q;
 	}
 
@@ -354,7 +363,7 @@ private:
 	Polygon currentPolygon; // 当前正在绘制的多边形
 	vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
-	Polygon nowPolygon;
+	Polygon *nowPolygon;
 
 	// 裁剪
 	QPoint clipStartPoint;  // 裁剪窗口的起点
@@ -461,12 +470,12 @@ protected:
 			}
 		}
 
-		// 绘制当前正在创建的多边形裁剪窗口
-		if (croppolygon.points.size() > 1) {
-			for (size_t i = 0; i < croppolygon.points.size() - 1; ++i) {
-				painter.drawLine(croppolygon.points[i].x, croppolygon.points[i].y, croppolygon.points[i + 1].x, croppolygon.points[i + 1].y);
-			}
-		}
+		//// 绘制当前正在创建的多边形裁剪窗口
+		//if (croppolygon.points.size() > 1) {
+		//	for (size_t i = 0; i < croppolygon.points.size() - 1; ++i) {
+		//		painter.drawLine(croppolygon.points[i].x, croppolygon.points[i].y, croppolygon.points[i + 1].x, croppolygon.points[i + 1].y);
+		//	}
+		//}
 
 		// 如果有起点，绘制线段的预览
 		if (hasStartPoint) {
@@ -1112,37 +1121,43 @@ protected:
 				(P.Getx() - (P.Gety() - P1.Gety()) * (P1.Getx() - P2.Getx()) / (P1.Gety() - P2.Gety()) - P1.Getx()) < 0)
 				flag = !flag;
 		}
+		qDebug() << flag;
 		return flag;
 	}
 
 	// 尚未理解标志矩形的用处
 	void polygonTrans(QMouseEvent* e) {
+		qDebug() << "11111111:::" << (*nowPolygon).points.size() << "\n";
 		transMatrix trM;
 		double zoomPropor_X, zoomPropor_Y;  //进行缩放的比例
 		Point moveVector;              //进行移动的向量
 		double angle;
 
 		if (iscomfirm) {
-			tempTransPoly = nowPolygon;
+			tempTransPoly = *nowPolygon;
 			iscomfirm = false;
 		}
 
 		if (isSpecificRefer)
 			trM.setReference(referancePoint);
 		else {
-			referancePoint = getPolyCenter(nowPolygon.points);
+			referancePoint = getPolyCenter((*nowPolygon).points);
 			trM.setReference(referancePoint);
 		}
-
+		
 		switch (trans_algo) {
 		case MOVE:
+			qDebug() << "siez::" << (*nowPolygon).points.size() << "\n";
 			moveVector = Point(e->pos()) - _begin;    //计算移动向量，终点减起点
 			trM.setMoveTrans(moveVector);
-			for (int i = 0; i < nowPolygon.points.size(); ++i) {
-				nowPolygon.points[i] = trM * nowPolygon.points[i];
+			for (int i = 0; i < (*nowPolygon).points.size(); ++i) {
+				//vector<Point> tem((*nowPolygon).points.size());
+				(*nowPolygon).points[i] = trM * ((*nowPolygon).points[i]);
+				//tem[i] = trM * (*nowPolygon).points[i];
+				//(*nowPolygon).points[i] = tem[i];
 			}
 			if (isInFill) {
-				trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+				trM.setMoveTrans(getPolyCenter((*nowPolygon).points) - nowFill.point);
 				nowFill.point = trM * nowFill.point;
 			}
 			_begin = Point(e->pos());
@@ -1155,12 +1170,12 @@ protected:
 				zoomPropor_Y =
 					abs(e->pos().y() - referancePoint.Gety()) * 1.0 / abs(tempTransPoly.points[0].Gety() - referancePoint.Gety());
 				trM.setZoomTrans(zoomPropor_X, zoomPropor_Y); //生成缩放变换矩阵
-				for (int i = 0; i < nowPolygon.points.size(); ++i) {
+				for (int i = 0; i < (*nowPolygon).points.size(); ++i) {
 					//(*nowPolygon)[i] = trM * tempTransPoly[i];
-					nowPolygon.points[i] = trM * tempTransPoly.points[i];
+					(*nowPolygon).points[i] = trM * tempTransPoly.points[i];
 				}
 				if (isInFill) {
-					trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+					trM.setMoveTrans(getPolyCenter((*nowPolygon).points) - nowFill.point);
 					nowFill.point = trM * nowFill.point;
 				}
 				//trM.setMoveTrans((*nowPolygon)[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
@@ -1177,13 +1192,13 @@ protected:
 				trM.setRotateTrans(angle);
 				if (angle > 30 || angle < -30)   /**旋转时连续旋转超过60多度时会出现bug，目前原因尚不明确，处理方法为每次超过30度时更新暂存多边形，则下次的角度从零计算**/
 					iscomfirm = true;     /**切勿删除！！！！！！！！！！！！**/
-				for (int i = 0; i < nowPolygon.points.size(); ++i) {
+				for (int i = 0; i < (*nowPolygon).points.size(); ++i) {
 					//(*nowPolygon)[i] = trM * tempTransPoly[i];
-					nowPolygon.points[i] = trM * tempTransPoly.points[i];
+					(*nowPolygon).points[i] = trM * tempTransPoly.points[i];
 				}
 				if (isInFill) {
 					//trM.setMoveTrans(getPolyCenter(*nowPolygon) - *nowFill);
-					trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+					trM.setMoveTrans(getPolyCenter((*nowPolygon).points) - nowFill.point);
 					//(*nowFill) = trM * (*nowFill);
 					nowFill.point = trM * nowFill.point;
 				}
@@ -1202,8 +1217,8 @@ protected:
 		if (polygons.size() > 0) {
 			for (int i = 0; i < polygons.size(); i++) {
 				if (polyContains(polygons[i].points, Point(event->pos().x(), event->pos().y()))) {
-					nowPolygon = polygons[i];
-					qDebug() << "nowPolygon" << nowPolygon.points[0].Getx() << "\n";
+					nowPolygon = &polygons[i];
+					qDebug() << "nowPolygon" << (*nowPolygon).points[0].Getx() << "\n";
 					isInPolygon = 1;
 					isInEllipse = 0;
 					isInRect = 0;
@@ -1216,6 +1231,22 @@ protected:
 					}
 				}
 			}
+			
+		}
+		update();
+
+		if (!isArrow && mode == TransMode) {
+			setCursor(Qt::SizeAllCursor);//拖拽模式下，并且在拖拽图形中，将光标形状改为十字
+			//if(event->button() == Qt::LeftButton){ qDebug() << "button:: " << "" << "\n"; }
+			
+			if (!(*nowPolygon).points.empty()) {
+				
+				polygonTrans(event);
+				update();
+			}
+		}
+		else {
+			setCursor(Qt::ArrowCursor);//恢复原始光标形状
 		}
 
 		if (hasStartPoint)
@@ -1262,6 +1293,11 @@ protected:
 				isSpecificRefer = true;
 				update();
 			}
+		}
+
+		if (isInPolygon) {
+			_begin = event->pos();
+			qDebug() << "found the polygon";
 		}
 
 		if (!hasStartPoint) {
@@ -1314,8 +1350,7 @@ protected:
 			//	update();
 			//}
 			else if (mode == TransMode) {
-				transMatrix trM;
-				trM.setMoveTrans(nowPolygon.points[0] - _begin);
+				
 				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
 				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
 			}
@@ -1371,6 +1406,10 @@ protected:
 				}
 			}
 
+			if (mode == TransMode) {
+				iscomfirm = true;
+			}
+
 			drawing = true;         // 绘制完成
 			update();               // 触发重绘
 			hasStartPoint = false;  // 重置，允许再次绘制新的线段
@@ -1390,52 +1429,52 @@ protected:
 				update();
 			}
 		}
-		// 双击事件封闭当前多边形裁剪区域
-		if (mode == TrimMode && clip_algo == CropPolygon) {
-			if (croppolygon.points.size() > 2) {
-				croppolygon.closePolygon(); // 封闭当前多边形
-				//shape.push_back(8);
-				//polygons.push_back(currentPolygon); // 保存到多边形列表
-				isCropPolygonReady = true;
-				update();
-				qDebug() << "Enter Polygon Cut!!!\n";
-				qDebug() << "裁剪区域有： " << croppolygon.points.size() << "\n";
-				if (mode == TrimMode && clip_algo == CropPolygon && isCropPolygonReady) {
-					update();
-					vector<Polygon> newPolygon;
-					vector<int> deleteIndex;
-					int k = 0;
-					for (int i = 0; i < shape.length(); i++) {
-						if (shape.at(i) == 3) {
-							Polygon polygon = cropPolygon(polygons[k++], croppolygon);
-							if (polygon.length() >= 3) {
-								// 如果返回的多边形的长度大于等于3，则说明裁切后的多边形不为空，将他们追加到新的多边形数组中
-								newPolygon.push_back(polygon);
-							}
-							deleteIndex.push_back(i);
-						}
-					}
-					sort(deleteIndex.rbegin(), deleteIndex.rend());
-					for (int i = 0; i < deleteIndex.size(); ++i) {
-						polygons.erase(polygons.begin() + deleteIndex.size() - i - 1);
-						shape.remove(deleteIndex[i]);
-					}
-					// 找到裁切多边形 == 8，并删除它
-					for (int i = 0; i < shape.length(); i++) {
-						if (shape.at(i) == 8) {
-							shape.remove(i);
-						}
-					}
-					croppolygon.clear(); // 清空当前裁剪区域
-					for (int i = 0; i < newPolygon.size(); ++i) {
-						polygons.push_back(newPolygon.at(i));
-						newPolygon.at(i).print();
-						shape.append(3);
-						update();
-					}
-				}
-			}
-		}
+		//// 双击事件封闭当前多边形裁剪区域
+		//if (mode == TrimMode && clip_algo == CropPolygon) {
+		//	if (croppolygon.points.size() > 2) {
+		//		croppolygon.closePolygon(); // 封闭当前多边形
+		//		//shape.push_back(8);
+		//		//polygons.push_back(currentPolygon); // 保存到多边形列表
+		//		isCropPolygonReady = true;
+		//		update();
+		//		qDebug() << "Enter Polygon Cut!!!\n";
+		//		qDebug() << "裁剪区域有： " << croppolygon.points.size() << "\n";
+		//		if (mode == TrimMode && clip_algo == CropPolygon && isCropPolygonReady) {
+		//			update();
+		//			vector<Polygon> newPolygon;
+		//			vector<int> deleteIndex;
+		//			int k = 0;
+		//			for (int i = 0; i < shape.length(); i++) {
+		//				if (shape.at(i) == 3) {
+		//					Polygon polygon = cropPolygon(polygons[k++], croppolygon);
+		//					if (polygon.length() >= 3) {
+		//						// 如果返回的多边形的长度大于等于3，则说明裁切后的多边形不为空，将他们追加到新的多边形数组中
+		//						newPolygon.push_back(polygon);
+		//					}
+		//					deleteIndex.push_back(i);
+		//				}
+		//			}
+		//			sort(deleteIndex.rbegin(), deleteIndex.rend());
+		//			for (int i = 0; i < deleteIndex.size(); ++i) {
+		//				polygons.erase(polygons.begin() + deleteIndex.size() - i - 1);
+		//				shape.remove(deleteIndex[i]);
+		//			}
+		//			// 找到裁切多边形 == 8，并删除它
+		//			for (int i = 0; i < shape.length(); i++) {
+		//				if (shape.at(i) == 8) {
+		//					shape.remove(i);
+		//				}
+		//			}
+		//			croppolygon.clear(); // 清空当前裁剪区域
+		//			for (int i = 0; i < newPolygon.size(); ++i) {
+		//				polygons.push_back(newPolygon.at(i));
+		//				newPolygon.at(i).print();
+		//				shape.append(3);
+		//				update();
+		//			}
+		//		}
+		//	}
+		//}
 	}
 
 	// 处理按键事件
