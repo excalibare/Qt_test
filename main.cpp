@@ -56,6 +56,7 @@ enum DrawMode {
 	PolygonMode,
 	FillMode,
 	TrimMode,
+	TransMode,
 };
 
 // 线段绘制算法
@@ -71,6 +72,13 @@ enum clip_Algorithm {
 	SutherlandTrim,
 	MidTrim,
 	CropPolygon
+};
+
+// 变形模式
+enum transMode {
+	MOVE,
+	ZOOM,
+	ROTATE,
 };
 
 // 结构体来存储每条线的信息，包括起点、终点和线条宽度
@@ -102,12 +110,29 @@ struct Point {
 public:
 	int x, y;
 	Point(int x = 0, int y = 0) : x(x), y(y) {}
+	Point(QPoint p) : x(p.x()), y(p.y()) {}
 
 	int Getx() {
 		return x;
 	}
 	int Gety() {
 		return y;
+	}
+
+	// 重载，支持相减
+	Point operator-(const Point& b) {
+		Point ret;
+		ret.x = this->x - b.x;
+		ret.y = this->y - b.y;
+		return ret;
+	}
+
+	// 重载，支持相加
+	Point operator+(const Point& b) {
+		Point ret;
+		ret.x = this->x + b.x;
+		ret.y = this->y + b.y;
+		return ret;
 	}
 };
 
@@ -144,6 +169,13 @@ public:
 		}
 	}
 
+	Polygon operator=(const Polygon& poly) {
+		Polygon res;
+		res.points = poly.points;
+		res.color = poly.color;
+		return res;
+	}
+
 	int length() {
 		return points.size();
 	}
@@ -174,6 +206,120 @@ public:
 	QColor color; // 储存填充颜色
 
 	Fill(Point t_point, QColor t_color) :point(t_point), color(t_color) {}
+	Fill() :point(Point(10, 10)), color(Qt::black) {}
+};
+
+class transMatrix {
+private:
+	int reference_x = 0, reference_y = 0;   //参考点
+	double tr[3][3] = { 1,0,0,
+					  0,1,0,   //变换矩阵
+					  0,0,1 };
+
+public:
+	/**构造与初始化函数**/
+	transMatrix(int refer_X = 0, int refer_Y = 0) {  //以参考点xy构造，默认都为0
+		reference_x = refer_X;
+		reference_y = refer_Y;
+	}
+	transMatrix(Point q) {   //兼容用Point直接作为参考点构造，便于程序中与鼠标交互
+		reference_x = q.x;
+		reference_y = q.y;
+	}
+	void setReference(int refer_X = 0, int refer_Y = 0) {  //以xy作为参数重新设置参考点
+		reference_x = refer_X;
+		reference_y = refer_Y;
+	}
+	void setReference(Point q) {   //以Point设置参考点
+		reference_x = q.x;
+		reference_y = q.y;
+	}
+
+	/**功能函数**/
+	void Reset() {   //将矩阵重置为没有任何变换效果的初值
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				if (i != j)
+					tr[i][j] = 0;
+				else
+					tr[i][j] = 1;
+			}
+		}
+	}
+
+	void setRotateTrans(double angle) {   //设置旋转功能，调用该函数传入一个角度值，自动将矩阵设置为对应的变换矩阵，并覆盖原内容
+		Reset();
+		angle = angle * 3.1415926 / 180;      //角度转弧度
+		tr[0][0] = cos(angle);
+		tr[0][1] = -sin(angle);
+		tr[1][0] = -tr[0][1];
+		tr[1][1] = tr[0][0];
+	}
+
+	void setZoomTrans(double z_X, double z_Y) {   //设置缩放功能，与设置旋转类似，参数为x与y方向的缩放比例
+		Reset();
+		tr[0][0] = z_X;
+		tr[1][1] = z_Y;
+	}
+
+	void setMoveTrans(double m_X, double m_Y) {   //设置移动功能，与设置旋转类似，参数为x与y方向的移动距离
+		Reset();
+		tr[0][2] = m_X;
+		tr[1][2] = m_Y;
+	}
+	void setMoveTrans(Point movevec) {   //设置移动功能重载，使用一个Qpoint作为向量修改移动距离
+		Reset();
+		tr[0][2] = movevec.Getx();
+		tr[1][2] = movevec.Gety();
+	}
+
+	/**运算符重载**/
+	double* operator[](int index) {    //下标符重载，调用一次返回一个行指针，需要再使用一次下标符取出指定位置矩阵，使用上和普通二维数组一致。
+		return this->tr[index];
+	}
+
+	Point operator*(Point q) {       //当右乘一个QPoint类时，定义为施加变换，返回一个变换后的QPoint
+		float QMatrix[3] = { (float)-reference_x,(float)-reference_y,1 };//准备点的向量
+		float QTransed[3] = { (float)reference_x,(float)reference_y,0 };//准备计算完后的点向量
+		QMatrix[0] += q.x;          //这里是加而不是赋值，包括上文准备点向量时填入了参考点相关数据
+		QMatrix[1] += q.y;          //这样做是为了满足根据某个参考点进行放缩和旋转，非原点做参考点需要进行两次移动变换，而这可以直接体现在加法上
+		float sum = 0;                //因此正好可以用向初始与最终点向量中预设移动变换的方式简化指定参考点变换。
+		for (int i = 0; i < 3; ++i) { //矩阵乘法
+			sum = 0;
+			for (int j = 0; j < 3; ++j) {
+				sum += this->tr[i][j] * QMatrix[j];
+			}
+			QTransed[i] += sum;
+		}
+		q.x = (int)QTransed[0] + 0.5;//将得到的结果取出，取整，修改QPoint并返回
+		q.y = (int)QTransed[1] + 0.5;
+		return q;
+	}
+
+	transMatrix operator*(transMatrix t) {  //当右乘同类矩阵时，进行普通矩阵乘法，但要考虑统一参考点
+		float sum = 0;
+		bool differRefer = false;
+		transMatrix temp(t.reference_x, t.reference_y);//将最终返回的类中填入右侧变换矩阵的参考点，因为右侧矩阵可能最终与点类相乘
+		if (t.reference_y != reference_y || t.reference_x != reference_x) {   //如果参考点不同，需要做参考点统一
+			differRefer = true;
+			t.tr[0][2] -= reference_x;   //进行移动变换 相当于原先矩阵与点相乘时，参照点在乘法中被处理，而此处没有直接与点相乘
+			t.tr[1][2] -= reference_y;   //因此参考矩阵乘法结合律定义,先对右矩阵乘移动矩阵，再对计算结果乘移动矩阵。这里直接简化为对应位置加法。
+		}
+		for (int i = 0; i < 3; ++i) {  //普通矩阵运算
+			for (int j = 0; j < 3; ++j) {
+				sum = 0;
+				for (int k = 0; k < 3; ++k) {
+					sum += this->tr[i][k] * t.tr[k][j];
+				}
+				temp[i][j] = sum;
+			}
+		}
+		if (differRefer) {  //进行移动变换
+			temp.tr[0][2] += reference_x;
+			temp.tr[1][2] += reference_y;
+		}
+		return temp;
+	}
 };
 
 class ShapeDrawer : public QWidget {
@@ -188,6 +334,7 @@ private:
 	QColor currentLineColor = Qt::black;    // 当前线条颜色
 	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形
 	float XL = 0, XR = 800, YB = 0, YT = 550;
+	Point _begin = Point(0, 0); // 拖拽的参考坐标，方便计算位移
 
 	// 直线段
 	QPoint startPoint;          // 线段的起点
@@ -207,14 +354,30 @@ private:
 	Polygon currentPolygon; // 当前正在绘制的多边形
 	vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
+	Polygon nowPolygon;
 
 	// 裁剪
 	QPoint clipStartPoint;  // 裁剪窗口的起点
 	QPoint clipEndPoint;    // 裁剪窗口的终点
-	clip_Algorithm  clip_algo = CropPolygon;// 当前选择的直线段裁剪算法
+	clip_Algorithm  clip_algo = SutherlandTrim;// 当前选择的直线段裁剪算法
+	transMode trans_algo = MOVE;
+	QVector<QPoint>cropPolygon; // 裁切多边形
 
-	Polygon croppolygon; //裁剪用多边形
-	bool isCropPolygonReady = false; // 确认裁剪用多边形就绪
+	// 填充
+	Fill nowFill;
+
+	// 变形
+	bool isInTagRect = false;
+	bool isInPolygon = false;
+	bool isInEllipse = false;
+	bool isArrow = false;
+	bool isInRect = false;
+	bool isInFill = false;
+
+	bool iscomfirm = false;
+	bool isSpecificRefer = false; // 是否有指定的变换点
+	Polygon tempTransPoly;
+	Point referancePoint;
 
 protected:
 	// 重写绘制事件
@@ -868,80 +1031,239 @@ protected:
 		return true;
 	}
 
-	// 多边形裁剪
-	Point intersection(Point p1, Point p2, Point p3, Point p4) {
-		QPoint p;
-		double a1, b1, c1, a2, b2, c2, x, y;
-		a1 = p2.Gety() - p1.Gety();
-		b1 = p1.Getx() - p2.Getx();
-		c1 = p2.Getx() * p1.Gety() - p1.Getx() * p2.Gety();
-		a2 = p4.Gety() - p3.Gety();
-		b2 = p3.Getx() - p4.Getx();
-		c2 = p4.Getx() * p3.Gety() - p3.Getx() * p4.Gety();
-		x = int((b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1));
-		y = int((a2 * c1 - a1 * c2) / (a1 * b2 - a2 * b1));
-		if ((x <= max(p1.Getx(), p2.Getx()) && x >= min(p1.Getx(), p2.Getx()))) {
-			return Point(x, y);
+	// 求多边形中心点，用于旋转
+	Point getPolyCenter(vector<Point> Poly) {
+		Point p0 = Poly[0];
+		Point p1 = Poly[1];
+		Point p2;
+		int Center_X, Center_Y;
+		double sumarea = 0, sumx = 0, sumy = 0;
+		double area;
+		for (int i = 2; i < Poly.size(); i++) {
+			p2 = Poly[i];
+			area = p0.Getx() * p1.Gety() + p1.Getx() * p2.Gety() + p2.Getx() * p0.Gety() - p1.Getx() * p0.Gety() - p2.Getx() * p1.Gety() - p0.Getx() * p2.Gety();
+			area /= 2;
+			sumarea += area;
+			sumx += (p0.Getx() + p1.Getx() + p2.Getx()) * area; //求∑cx[i] * s[i]和∑cy[i] * s[i]
+			sumy += (p0.Gety() + p1.Gety() + p2.Gety()) * area;
+			p1 = p2;//转换为下一个三角形，求总面积
 		}
-		else {
-			return Point(-1, -1);
-		}
+		Center_X = (int)(sumx / sumarea / 3.0);
+		Center_Y = (int)(sumy / sumarea / 3.0);
+		qDebug() << Center_X;
+		qDebug() << Center_Y;
+		return Point(Center_X, Center_Y);
 	}
 
-	bool outsideOneEdgeOfPolygon(Polygon polygon, Point p, int x) {
-		Point p1 = polygon.points[x];
-		Point p2 = polygon.points[(x + 1) % int(polygon.length())];
-		Point p3 = polygon.points[(x + 2) % int(polygon.length())];
-		int a = p2.Gety() - p1.Gety();
-		int b = p1.Getx() - p2.Getx();
-		int c = p2.Getx() * p1.Gety() - p1.Getx() * p2.Gety();
-		if (a < 0) {
-			a = -a;
-			b = -b;
-			c = -c;
-		}
-		int pointD = a * p.Getx() + b * p.Gety() + c;
-		int polyNextPointD = a * p3.Getx() + b * p3.Gety() + c;
-		if (pointD * polyNextPointD >= 0) {
-			return true;
-		}
-		else {
-			return false;
-		}
+	int crossProduct(Point A, Point B, Point C) {
+		return (B.Getx() - A.Getx()) * (C.Gety() - A.Gety()) - (C.Getx() - A.Getx()) * (B.Gety() - A.Gety());
 	}
 
-	Polygon cropPolygon(Polygon polygon, Polygon cropPolygon) {
-		Polygon result, originalPolygon = polygon;
-		for (int i = 0; i < cropPolygon.length(); ++i) {
-			result.clear();
-			for (int j = 0; j < originalPolygon.length(); ++j) {
-				Point p1 = originalPolygon.points[j];
-				Point p2 = originalPolygon.points[(j + 1) % int(originalPolygon.length())];
-				bool p1_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p1, i);
-				bool p2_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p2, i);
-				if (p1_inPolygonEdge && p2_inPolygonEdge) {
-					result.addPoint(p2);
+	int dotProduct(Point p1, Point p2) {
+		return p1.Getx() * p2.Getx() + p1.Gety() * p2.Gety();
+	}
+
+	//判断点Q是否在P1和P2的线段上
+	bool OnSegment(Point P1, Point P2, Point Q) {
+		//前一个判断点Q在P1P2直线上 后一个判断在P1P2范围上
+		//QP1 X QP2
+		return crossProduct(Q, P1, P2) == 0 && dotProduct(P1 - Q, P2 - Q) <= 0;
+	}
+
+	double getAngle(QPoint origin, QPoint p1, QPoint p2) {
+		int x1 = p1.x(), y1 = p1.y(), x2 = p2.x(), y2 = p2.y(), x3 = origin.x(), y3 = origin.y();
+		double theta = atan2(x1 - x3, y1 - y3) - atan2(x2 - x3, y2 - y3);
+
+		if (theta > M_PI)
+			theta -= 2 * M_PI;
+		if (theta < -M_PI)
+			theta += 2 * M_PI;
+
+		theta = abs(theta * 180.0 / M_PI);
+		if ((x2 - x3) * (y2 - y1) - (y2 - y3) * (x2 - x1) < 0)
+			theta *= -1;
+		return theta;
+	}
+
+	double getAngle(Point origin, Point p1, Point p2) {
+		int x1 = p1.Getx(), y1 = p1.Gety(), x2 = p2.Getx(), y2 = p2.Gety(), x3 = origin.Getx(), y3 = origin.Gety();
+		double theta = atan2(x1 - x3, y1 - y3) - atan2(x2 - x3, y2 - y3);
+
+		if (theta > M_PI)
+			theta -= 2 * M_PI;
+		if (theta < -M_PI)
+			theta += 2 * M_PI;
+
+		theta = abs(theta * 180.0 / M_PI);
+		if ((x2 - x3) * (y2 - y1) - (y2 - y3) * (x2 - x1) < 0)
+			theta *= -1;
+		return theta;
+	}
+
+	bool polyContains(vector<Point> polygon, Point P) {
+		bool flag = false; //相当于计数
+		Point P1, P2; //多边形一条边的两个顶点
+		for (int i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+			//polygon[]是给出多边形的顶点
+			P1 = polygon[i];
+			P2 = polygon[j];
+			if (OnSegment(P1, P2, P)) return true; //点在多边形一条边上
+			if (((P1.Gety() - P.Gety()) > 0 != (P2.Gety() - P.Gety()) > 0) &&
+				(P.Getx() - (P.Gety() - P1.Gety()) * (P1.Getx() - P2.Getx()) / (P1.Gety() - P2.Gety()) - P1.Getx()) < 0)
+				flag = !flag;
+		}
+		return flag;
+	}
+
+	// 尚未理解标志矩形的用处
+	void polygonTrans(QMouseEvent* e) {
+		transMatrix trM;
+		double zoomPropor_X, zoomPropor_Y;  //进行缩放的比例
+		Point moveVector;              //进行移动的向量
+		double angle;
+
+		if (iscomfirm) {
+			tempTransPoly = nowPolygon;
+			iscomfirm = false;
+		}
+
+		if (isSpecificRefer)
+			trM.setReference(referancePoint);
+		else {
+			referancePoint = getPolyCenter(nowPolygon.points);
+			trM.setReference(referancePoint);
+		}
+
+		switch (trans_algo) {
+		case MOVE:
+			moveVector = Point(e->pos()) - _begin;    //计算移动向量，终点减起点
+			trM.setMoveTrans(moveVector);
+			for (int i = 0; i < nowPolygon.points.size(); ++i) {
+				nowPolygon.points[i] = trM * nowPolygon.points[i];
+			}
+			if (isInFill) {
+				trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+				nowFill.point = trM * nowFill.point;
+			}
+			_begin = Point(e->pos());
+			update();
+			break;
+		case ZOOM:
+			if (isInTagRect) {
+				zoomPropor_X =
+					abs(e->pos().x() - referancePoint.Getx()) * 1.0 / abs(tempTransPoly.points[0].Getx() - referancePoint.Getx());
+				zoomPropor_Y =
+					abs(e->pos().y() - referancePoint.Gety()) * 1.0 / abs(tempTransPoly.points[0].Gety() - referancePoint.Gety());
+				trM.setZoomTrans(zoomPropor_X, zoomPropor_Y); //生成缩放变换矩阵
+				for (int i = 0; i < nowPolygon.points.size(); ++i) {
+					//(*nowPolygon)[i] = trM * tempTransPoly[i];
+					nowPolygon.points[i] = trM * tempTransPoly.points[i];
 				}
-				else if (p1_inPolygonEdge || p2_inPolygonEdge) {
-					Point k1 = cropPolygon.points[i];
-					Point k2 = cropPolygon.points[(i + 1) % int(cropPolygon.length())];
-					Point temp = intersection(p1, p2, k1, k2);
-					if (temp.Getx() != -1 && temp.Gety() != -1) {
-						result.addPoint(temp);
+				if (isInFill) {
+					trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+					nowFill.point = trM * nowFill.point;
+				}
+				//trM.setMoveTrans((*nowPolygon)[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
+				//trM.setMoveTrans(nowPolygon.points[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
+				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
+				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
+				update();
+				//_begin = e->pos();
+			}
+			break;
+		case ROTATE:
+			if (isInTagRect) {
+				angle = getAngle(referancePoint, tempTransPoly.points[0], e->pos());
+				trM.setRotateTrans(angle);
+				if (angle > 30 || angle < -30)   /**旋转时连续旋转超过60多度时会出现bug，目前原因尚不明确，处理方法为每次超过30度时更新暂存多边形，则下次的角度从零计算**/
+					iscomfirm = true;     /**切勿删除！！！！！！！！！！！！**/
+				for (int i = 0; i < nowPolygon.points.size(); ++i) {
+					//(*nowPolygon)[i] = trM * tempTransPoly[i];
+					nowPolygon.points[i] = trM * tempTransPoly.points[i];
+				}
+				if (isInFill) {
+					//trM.setMoveTrans(getPolyCenter(*nowPolygon) - *nowFill);
+					trM.setMoveTrans(getPolyCenter(nowPolygon.points) - nowFill.point);
+					//(*nowFill) = trM * (*nowFill);
+					nowFill.point = trM * nowFill.point;
+				}
+				//trM.setMoveTrans((*nowPolygon)[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
+				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
+				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
+				_begin = e->pos();
+				update();
+			}
+		}
+	}
+
+	// 处理鼠标移动事件
+	void mouseMoveEvent(QMouseEvent* event) override {
+		// 定位当前鼠标所指的多边形
+		if (polygons.size() > 0) {
+			for (int i = 0; i < polygons.size(); i++) {
+				if (polyContains(polygons[i].points, Point(event->pos().x(), event->pos().y()))) {
+					nowPolygon = polygons[i];
+					qDebug() << "nowPolygon" << nowPolygon.points[0].Getx() << "\n";
+					isInPolygon = 1;
+					isInEllipse = 0;
+					isInRect = 0;
+					isArrow = 0;
+					for (int j = 0; j < fills.size(); j++) {
+						if (polyContains(polygons[i].points, fills.at(j).point)) {
+							nowFill = fills[j];
+							isInFill = 1;
+						}
 					}
 				}
-				if (!p1_inPolygonEdge && p2_inPolygonEdge) {
-					result.addPoint(p2);
+			}
+		}
+
+		if (hasStartPoint)
+		{
+			if (mode == LineMode) {
+				// 更新终点为当前鼠标位置
+				endPoint = event->pos();
+			}
+			else if (mode == CircleMode) {
+				QPoint currentPos = event->pos();
+				radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
+			}
+			else if (mode == ArcMode && counter == 0) {
+				return;
+			}
+			else if (mode == ArcMode && counter == 1) {
+				QPoint currentPos = event->pos();
+				radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
+
+				// 计算当前鼠标位置与圆心的角度
+				float angleRad = atan2(currentPos.y() - center.y(), currentPos.x() - center.x());
+				endAngle = static_cast<int>(angleRad * 180.0 / M_PI); // 转换为角度
+
+				if (endAngle < 0) {
+					endAngle += 360;  // 确保角度为正
 				}
 			}
-			originalPolygon = result;
+			else if (mode == TrimMode) {
+				// 这个else if为什么要放在 ArcMode 里面？？？
+				// 放里面当然用不了重绘啦
+				clipEndPoint = event->pos();
+			}
+
+			update(); // 触发重绘
 		}
-		result.closePolygon();
-		return result;
 	}
 
 	// 处理鼠标按下事件
 	void mousePressEvent(QMouseEvent* event) override {
+
+		if (event->button() == Qt::MiddleButton) {
+			if (mode == TransMode) {
+				referancePoint = event->pos();
+				isSpecificRefer = true;
+				update();
+			}
+		}
+
 		if (!hasStartPoint) {
 			if (mode == LineMode) {
 				// 第一次点击：记录起点
@@ -983,13 +1305,19 @@ protected:
 				clipStartPoint = event->pos();  // 记录鼠标按下的位置作为起点
 				clipEndPoint = clipStartPoint;
 			}
-			else if (mode == TrimMode && clip_algo == CropPolygon) {
-				Point a(event->pos().x(), event->pos().y());
-				croppolygon.addPoint(a);
-				qDebug() << "Now drawing the cutting polygon!";
-				croppolygon.color = currentLineColor; // 修改多边形颜色
-				shape.push_back(8);
-				update();
+			//else if (mode == TrimMode && clip_algo == CropPolygon) {
+			//	QPoint a;
+			//	a.setX(event->pos().x());
+			//	a.setY(event->pos().y());
+			//	cropPolygon.append(a);
+			//	shape.push_back(5);
+			//	update();
+			//}
+			else if (mode == TransMode) {
+				transMatrix trM;
+				trM.setMoveTrans(nowPolygon.points[0] - _begin);
+				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
+				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
 			}
 
 			hasStartPoint = true;
@@ -1047,44 +1375,6 @@ protected:
 			update();               // 触发重绘
 			hasStartPoint = false;  // 重置，允许再次绘制新的线段
 			drawing = false;
-		}
-	}
-
-	// 处理鼠标移动事件
-	void mouseMoveEvent(QMouseEvent* event) override {
-		if (hasStartPoint)
-		{
-			if (mode == LineMode) {
-				// 更新终点为当前鼠标位置
-				endPoint = event->pos();
-			}
-			else if (mode == CircleMode) {
-				QPoint currentPos = event->pos();
-				radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
-			}
-			else if (mode == ArcMode && counter == 0) {
-				return;
-			}
-			else if (mode == ArcMode && counter == 1) {
-				QPoint currentPos = event->pos();
-				radius = std::sqrt(std::pow(currentPos.x() - center.x(), 2) + std::pow(currentPos.y() - center.y(), 2));
-
-				// 计算当前鼠标位置与圆心的角度
-				float angleRad = atan2(currentPos.y() - center.y(), currentPos.x() - center.x());
-				endAngle = static_cast<int>(angleRad * 180.0 / M_PI); // 转换为角度
-
-				if (endAngle < 0) {
-					endAngle += 360;  // 确保角度为正
-				}
-			}
-			else if (mode == TrimMode && !clip_algo == CropPolygon) {
-				// 这个else if为什么要放在 ArcMode 里面？？？
-				// 放里面当然用不了重绘啦
-				// lty你为什么要自问自答？
-				clipEndPoint = event->pos();
-			}
-
-			update(); // 触发重绘
 		}
 	}
 
@@ -1207,6 +1497,12 @@ public:
 		clip_algo = algo;
 	}
 
+	// 新增设置变形模式
+	void setTransAlgorithm(transMode algo)
+	{
+		trans_algo = algo;
+	}
+
 	// 新增：设置圆弧的起始角度和结束角度
 	void setArcAngles(int start, int end) {
 		startAngle = start;
@@ -1226,6 +1522,7 @@ private:
 	QSlider* widthSlider;           // 新增：控制线条宽度 滑动条
 	QPushButton* colorButton;       // 新增：颜色 选择按钮
 	QComboBox* lineTypeComboBox;    // 新增：线型 选择按钮
+	QComboBox* transModeComboBox;    // 新增：线型 选择按钮
 
 public:
 	MainWindow(QWidget* parent = nullptr) : QWidget(parent) {
@@ -1239,6 +1536,7 @@ public:
 		modeComboBox->addItem("Shape", PolygonMode);
 		/*modeComboBox->addItem("Fill", FillMode);*/
 		modeComboBox->addItem("Trim", TrimMode);
+		modeComboBox->addItem("Transform", TransMode);
 
 		// 创建下拉框并添加算法选项
 		line_algorithmComboBox = new QComboBox(this);
@@ -1252,6 +1550,12 @@ public:
 		clip_algorithmComboBox->addItem("Cohen-Sutherland", SutherlandTrim);
 		clip_algorithmComboBox->addItem("Midpoint Trim", MidTrim);
 		clip_algorithmComboBox->addItem("Trim Polygon", CropPolygon);
+
+		// 创建下拉框并添加变形选项
+		transModeComboBox = new QComboBox(this);
+		transModeComboBox->addItem("Move", MOVE);
+		transModeComboBox->addItem("Zoom", ZOOM);
+		transModeComboBox->addItem("Rotate", ROTATE);
 
 		// 新增：创建滑动条控制线条宽度
 		widthSlider = new QSlider(Qt::Horizontal, this);
@@ -1268,7 +1572,9 @@ public:
 		rightLayout->addWidget(new QLabel("Select Line Mode:"));
 		rightLayout->addWidget(line_algorithmComboBox);  // 新增：直线段算法选择
 		rightLayout->addWidget(new QLabel("Select Clip Mode:"));
-		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择
+		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择	
+		rightLayout->addWidget(new QLabel("Select Transform Mode:"));
+		rightLayout->addWidget(transModeComboBox);  // 新增：直线段裁剪算法选择
 		rightLayout->addWidget(new QLabel("Select Line Width:"));
 		rightLayout->addWidget(widthSlider);        // 新增：将滑动条添加到右侧布局
 		rightLayout->addWidget(colorButton);        // 新增：将颜色按钮添加到布局
@@ -1287,6 +1593,11 @@ public:
 		// 连接下拉框的选择变化信号
 		connect(clip_algorithmComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
 			shapeDrawer->setclipAlgorithm(static_cast<clip_Algorithm>(clip_algorithmComboBox->currentData().toInt()));
+			});
+
+		// 连接下拉框的选择变化信号
+		connect(transModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index) {
+			shapeDrawer->setTransAlgorithm(static_cast<transMode>(transModeComboBox->currentData().toInt()));
 			});
 
 		// 连接滑动条的值变化信号到 shapeDrawer 的 setLineWidth 函数
