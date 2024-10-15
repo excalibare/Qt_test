@@ -218,6 +218,7 @@ public:
 	Fill() :point(Point(10, 10)), color(Qt::black) {}
 };
 
+// 变换矩阵
 class transMatrix {
 private:
 	int reference_x = 0, reference_y = 0;   //参考点
@@ -336,6 +337,7 @@ public:
 	}
 };
 
+
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
@@ -393,6 +395,9 @@ private:
 	Polygon tempTransPoly;
 	Point referancePoint;
 	QRect* transRectTag = new QRect(100, 100, 20, 20);             //标签矩形
+
+	// Bezier曲线
+	int isOnPoint1; // 是否在控制点上bezier
 
 protected:
 	// 重写绘制事件
@@ -1070,10 +1075,12 @@ protected:
 		return Point(Center_X, Center_Y);
 	}
 
+	// 辅助OnSegment函数
 	int crossProduct(Point A, Point B, Point C) {
 		return (B.Getx() - A.Getx()) * (C.Gety() - A.Gety()) - (C.Getx() - A.Getx()) * (B.Gety() - A.Gety());
 	}
 
+	// 辅助OnSegment函数
 	int dotProduct(Point p1, Point p2) {
 		return p1.Getx() * p2.Getx() + p1.Gety() * p2.Gety();
 	}
@@ -1085,6 +1092,7 @@ protected:
 		return crossProduct(Q, P1, P2) == 0 && dotProduct(P1 - Q, P2 - Q) <= 0;
 	}
 
+	// 给出两个点和一个原点，计算两点与原点构成的夹角
 	double getAngle(QPoint origin, QPoint p1, QPoint p2) {
 		int x1 = p1.x(), y1 = p1.y(), x2 = p2.x(), y2 = p2.y(), x3 = origin.x(), y3 = origin.y();
 		double theta = atan2(x1 - x3, y1 - y3) - atan2(x2 - x3, y2 - y3);
@@ -1100,6 +1108,7 @@ protected:
 		return theta;
 	}
 
+	// 给出两个点和一个原点，计算两点与原点构成的夹角
 	double getAngle(Point origin, Point p1, Point p2) {
 		int x1 = p1.Getx(), y1 = p1.Gety(), x2 = p2.Getx(), y2 = p2.Gety(), x3 = origin.Getx(), y3 = origin.Gety();
 		double theta = atan2(x1 - x3, y1 - y3) - atan2(x2 - x3, y2 - y3);
@@ -1115,6 +1124,7 @@ protected:
 		return theta;
 	}
 
+	// 测试p点是否在多边形内部
 	bool polyContains(vector<Point> polygon, Point P) {
 		bool flag = false; //相当于计数
 		Point P1, P2; //多边形一条边的两个顶点
@@ -1131,7 +1141,7 @@ protected:
 		return flag;
 	}
 
-	// 尚未理解标志矩形的用处
+	// 使用变换矩阵进行多边形变换
 	void polygonTrans(QMouseEvent* e) {
 		transMatrix trM;
 		double zoomPropor_X, zoomPropor_Y;  //进行缩放的比例
@@ -1377,10 +1387,6 @@ protected:
 			//	shape.push_back(5);
 			//	update();
 			//}
-			else if (mode == TransMode) {
-				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
-				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
-			}
 
 			hasStartPoint = true;
 			drawing = false; // 初始化为不绘制实际直线
@@ -1640,7 +1646,7 @@ public:
 		rightLayout->addWidget(new QLabel("Select Clip Mode:"));
 		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择
 		rightLayout->addWidget(new QLabel("Select Transform Mode:"));
-		rightLayout->addWidget(transModeComboBox);  // 新增：直线段裁剪算法选择
+		rightLayout->addWidget(transModeComboBox);		// 新增：图形变换模式选择
 		rightLayout->addWidget(new QLabel("Select Line Width:"));
 		rightLayout->addWidget(widthSlider);        // 新增：将滑动条添加到右侧布局
 		rightLayout->addWidget(colorButton);        // 新增：将颜色按钮添加到布局
@@ -1722,79 +1728,6 @@ void clearMAP(vector<vector<pointData>>& MAP) {
 		}
 	}
 }
-
-// lyc：这部分裁剪多边形的代码我在上面实现了，如果确认没用就删掉了？
-//bool outsideOneEdgeOfPolygon(QVector<QPoint> polygon, QPoint p, int x) {
-//	QPoint p1 = polygon[x];
-//	QPoint p2 = polygon[(x + 1) % int(polygon.length())];
-//	QPoint p3 = polygon[(x + 2) % int(polygon.length())];
-//	int a = p2.y() - p1.y();
-//	int b = p1.x() - p2.x();
-//	int c = p2.x() * p1.y() - p1.x() * p2.y();
-//	if (a < 0) {
-//		a = -a;
-//		b = -b;
-//		c = -c;
-//	}
-//	int pointD = a * p.x() + b * p.y() + c;
-//	int polyNextPointD = a * p3.x() + b * p3.y() + c;
-//	if (pointD * polyNextPointD >= 0) {
-//		return true;
-//	}
-//	else {
-//		return false;
-//	}
-//}
-//
-//QPoint intersection(QPoint p1, QPoint p2, QPoint p3, QPoint p4) {
-//	QPoint p;
-//	double a1, b1, c1, a2, b2, c2, x, y;
-//	a1 = p2.y() - p1.y();
-//	b1 = p1.x() - p2.x();
-//	c1 = p2.x() * p1.y() - p1.x() * p2.y();
-//	a2 = p4.y() - p3.y();
-//	b2 = p3.x() - p4.x();
-//	c2 = p4.x() * p3.y() - p3.x() * p4.y();
-//	x = int((b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1));
-//	y = int((a2 * c1 - a1 * c2) / (a1 * b2 - a2 * b1));
-//	if ((x <= max(p1.x(), p2.x()) && x >= min(p1.x(), p2.x()))) {
-//		p.setX(x);
-//		p.setY(y);
-//		return p;
-//	}
-//	else {
-//		return QPoint(-1, -1);
-//	}
-//}
-//
-//QVector<QPoint> crop_Polygon(const QVector<QPoint>& polygon, const QVector<QPoint>& cropPolygon) {
-//	QVector<QPoint> result, originalPolygon = polygon;
-//	for (int i = 0; i < cropPolygon.length(); ++i) {
-//		result.clear();
-//		for (int j = 0; j < originalPolygon.length(); ++j) {
-//			QPoint p1 = originalPolygon[j];
-//			QPoint p2 = originalPolygon[(j + 1) % int(originalPolygon.length())];
-//			bool p1_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p1, i);
-//			bool p2_inPolygonEdge = outsideOneEdgeOfPolygon(cropPolygon, p2, i);
-//			if (p1_inPolygonEdge && p2_inPolygonEdge) {
-//				result.append(p2);
-//			}
-//			else if (p1_inPolygonEdge || p2_inPolygonEdge) {
-//				QPoint k1 = cropPolygon[i];
-//				QPoint k2 = cropPolygon[(i + 1) % int(cropPolygon.length())];
-//				QPoint temp = intersection(p1, p2, k1, k2);
-//				if (temp.x() != -1 && temp.y() != -1) {
-//					result.append(temp);
-//				}
-//			}
-//			if (!p1_inPolygonEdge && p2_inPolygonEdge) {
-//				result.append(p2);
-//			}
-//		}
-//		originalPolygon = result;
-//	}
-//	return result;
-//}
 
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);
