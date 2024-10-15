@@ -276,10 +276,15 @@ public:
 		tr[0][2] = m_X;
 		tr[1][2] = m_Y;
 	}
-	void setMoveTrans(Point movevec) {   //设置移动功能重载，使用一个Qpoint作为向量修改移动距离
+	void setMoveTrans(Point movevec) {   //设置移动功能重载，使用一个point作为向量修改移动距离
 		Reset();
 		tr[0][2] = movevec.Getx();
 		tr[1][2] = movevec.Gety();
+	}
+	void setMoveTrans(QPoint movevec) {   //设置移动功能重载，使用一个Qpoint作为向量修改移动距离
+		Reset();
+		tr[0][2] = movevec.x();
+		tr[1][2] = movevec.y();
 	}
 
 	/**运算符重载**/
@@ -363,7 +368,7 @@ private:
 	Polygon currentPolygon; // 当前正在绘制的多边形
 	vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
-	Polygon *nowPolygon;
+	Polygon* nowPolygon;
 
 	// 裁剪
 	QPoint clipStartPoint;  // 裁剪窗口的起点
@@ -376,7 +381,7 @@ private:
 	Fill nowFill;
 
 	// 变形
-	bool isInTagRect = false;
+	bool isInTagRect = false; //是否在标志矩形内
 	bool isInPolygon = false;
 	bool isInEllipse = false;
 	bool isArrow = false;
@@ -387,6 +392,7 @@ private:
 	bool isSpecificRefer = false; // 是否有指定的变换点
 	Polygon tempTransPoly;
 	Point referancePoint;
+	QRect* transRectTag = new QRect(100, 100, 20, 20);             //标签矩形
 
 protected:
 	// 重写绘制事件
@@ -1127,14 +1133,15 @@ protected:
 
 	// 尚未理解标志矩形的用处
 	void polygonTrans(QMouseEvent* e) {
-		qDebug() << "11111111:::" << (*nowPolygon).points.size() << "\n";
 		transMatrix trM;
 		double zoomPropor_X, zoomPropor_Y;  //进行缩放的比例
 		Point moveVector;              //进行移动的向量
 		double angle;
 
+		tempTransPoly = *nowPolygon;
+
 		if (iscomfirm) {
-			tempTransPoly = *nowPolygon;
+			//tempTransPoly = *nowPolygon;
 			iscomfirm = false;
 		}
 
@@ -1144,10 +1151,9 @@ protected:
 			referancePoint = getPolyCenter((*nowPolygon).points);
 			trM.setReference(referancePoint);
 		}
-		
+
 		switch (trans_algo) {
 		case MOVE:
-			qDebug() << "siez::" << (*nowPolygon).points.size() << "\n";
 			moveVector = Point(e->pos()) - _begin;    //计算移动向量，终点减起点
 			trM.setMoveTrans(moveVector);
 			for (int i = 0; i < (*nowPolygon).points.size(); ++i) {
@@ -1164,7 +1170,9 @@ protected:
 			update();
 			break;
 		case ZOOM:
+			qDebug() << isInTagRect << "----\n";
 			if (isInTagRect) {
+				qDebug() << "in ZOOM!!!\n";
 				zoomPropor_X =
 					abs(e->pos().x() - referancePoint.Getx()) * 1.0 / abs(tempTransPoly.points[0].Getx() - referancePoint.Getx());
 				zoomPropor_Y =
@@ -1178,16 +1186,19 @@ protected:
 					trM.setMoveTrans(getPolyCenter((*nowPolygon).points) - nowFill.point);
 					nowFill.point = trM * nowFill.point;
 				}
-				//trM.setMoveTrans((*nowPolygon)[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
-				//trM.setMoveTrans(nowPolygon.points[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
-				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
+				trM.setMoveTrans((*nowPolygon).points[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
+				QPoint leftTop = QPoint((trM * (transRectTag->topLeft())).Getx(), (trM * (transRectTag->topLeft())).Gety());
+				transRectTag->setTopLeft(leftTop);
 				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
+				transRectTag->setBottomRight(QPoint((trM * (transRectTag->bottomRight())).Getx(), (trM * (transRectTag->bottomRight())).Gety()));
 				update();
 				//_begin = e->pos();
 			}
 			break;
 		case ROTATE:
+			qDebug() << isInTagRect << "----\n";
 			if (isInTagRect) {
+				qDebug() << "in ROTATE!!!\n";
 				angle = getAngle(referancePoint, tempTransPoly.points[0], e->pos());
 				trM.setRotateTrans(angle);
 				if (angle > 30 || angle < -30)   /**旋转时连续旋转超过60多度时会出现bug，目前原因尚不明确，处理方法为每次超过30度时更新暂存多边形，则下次的角度从零计算**/
@@ -1202,9 +1213,11 @@ protected:
 					//(*nowFill) = trM * (*nowFill);
 					nowFill.point = trM * nowFill.point;
 				}
-				//trM.setMoveTrans((*nowPolygon)[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
+				trM.setMoveTrans((*nowPolygon).points[0] - transRectTag->center()); //让标志矩形中心点跟随移动到新点
 				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
 				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
+				transRectTag->setBottomRight(QPoint((trM * (transRectTag->topLeft())).Getx(), (trM * (transRectTag->topLeft())).Gety()));
+				transRectTag->setBottomRight(QPoint((trM * (transRectTag->bottomRight())).Getx(), (trM * (transRectTag->bottomRight())).Gety()));
 				_begin = e->pos();
 				update();
 			}
@@ -1231,22 +1244,38 @@ protected:
 					}
 				}
 			}
-			
 		}
+
+		update();
+
+		if (transRectTag->contains(event->pos())) {
+			isInTagRect = true;
+			isArrow = 0;
+		}
+
 		update();
 
 		if (!isArrow && mode == TransMode) {
 			setCursor(Qt::SizeAllCursor);//拖拽模式下，并且在拖拽图形中，将光标形状改为十字
 			//if(event->button() == Qt::LeftButton){ qDebug() << "button:: " << "" << "\n"; }
-			
+
 			if (!(*nowPolygon).points.empty()) {
-				
 				polygonTrans(event);
 				update();
 			}
 		}
 		else {
 			setCursor(Qt::ArrowCursor);//恢复原始光标形状
+		}
+
+		if (isInPolygon) {
+			transMatrix trM;
+			QPoint tem = QPoint((*nowPolygon).points[0].Getx(), (*nowPolygon).points[0].Gety());
+			trM.setMoveTrans(tem - transRectTag->center());
+			//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
+			//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
+			transRectTag->setBottomRight(QPoint((trM * (transRectTag->topLeft())).Getx(), (trM * (transRectTag->topLeft())).Gety()));
+			transRectTag->setBottomRight(QPoint((trM * (transRectTag->bottomRight())).Getx(), (trM * (transRectTag->bottomRight())).Gety()));
 		}
 
 		if (hasStartPoint)
@@ -1286,7 +1315,6 @@ protected:
 
 	// 处理鼠标按下事件
 	void mousePressEvent(QMouseEvent* event) override {
-
 		if (event->button() == Qt::MiddleButton) {
 			if (mode == TransMode) {
 				referancePoint = event->pos();
@@ -1350,7 +1378,6 @@ protected:
 			//	update();
 			//}
 			else if (mode == TransMode) {
-				
 				//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
 				//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
 			}
@@ -1611,7 +1638,7 @@ public:
 		rightLayout->addWidget(new QLabel("Select Line Mode:"));
 		rightLayout->addWidget(line_algorithmComboBox);  // 新增：直线段算法选择
 		rightLayout->addWidget(new QLabel("Select Clip Mode:"));
-		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择	
+		rightLayout->addWidget(clip_algorithmComboBox);  // 新增：直线段裁剪算法选择
 		rightLayout->addWidget(new QLabel("Select Transform Mode:"));
 		rightLayout->addWidget(transModeComboBox);  // 新增：直线段裁剪算法选择
 		rightLayout->addWidget(new QLabel("Select Line Width:"));
