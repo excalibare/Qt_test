@@ -44,6 +44,16 @@ public:
 };
 
 // 一部分的 函数声明
+=======
+class point2d {
+public:
+	double x, y;
+	point2d() {}
+	point2d(double X, double Y) :x(X), y(Y) {}
+	void seX(double X) { x = X; }
+	void seY(double Y) { x = Y; }
+};
+
 void initMAP(vector<vector<pointData>>& MAP);
 void clearMAP(vector<vector<pointData>>& MAP);
 
@@ -56,6 +66,7 @@ enum DrawMode {
 	FillMode,
 	TrimMode,
 	TransMode,
+	BezierMode
 };
 
 // 线段绘制算法
@@ -371,6 +382,66 @@ public:
 	}
 };
 
+
+class Bezier {
+private:
+	vector<vector<int>> const* brush;
+protected:
+	QPen& _pen;
+	QPainter& painter;
+	vector<point2d> controlPoints;
+public:
+	Bezier(int penWidth, QPainter& p, const QVector<QPoint>& points, QPen pen)
+		: _pen(pen), painter(p) {
+		for (int i = 0; i < points.size(); ++i) {
+			controlPoints.emplace_back(double(points[i].x()), double(points[i].y()));
+		}
+	}
+	point2d recursive_bezier(const std::vector<point2d>& control_points, double t)
+	{
+		// Casteljau
+		int n = control_points.size();
+		if (n == 1) return control_points[0];
+		std::vector<point2d> res;
+		for (int i = 0; i < n - 1; ++i) {
+			res.emplace_back((1 - t) * control_points[i].x + t * control_points[i + 1].x, (1 - t) * control_points[i].y + t * control_points[i + 1].y);
+		}
+		return recursive_bezier(res, t);
+	}
+
+	void drawBezier()
+	{
+		if (controlPoints.size() < 2) return;
+
+		const int precision = 100; // 曲线精度
+		QVector<QPointF> curvePoints;
+
+		for (int i = 0; i <= precision; ++i) {
+			double t = i / double(precision);
+			double x = 0.0;
+			double y = 0.0;
+			int n = controlPoints.size() - 1;
+			for (int j = 0; j <= n; ++j) {
+				double binomial_coeff = combination(n, j) * std::pow(t, j) * std::pow(1 - t, n - j);
+				x += binomial_coeff * controlPoints[j].x;
+				y += binomial_coeff * controlPoints[j].y;
+			}
+			curvePoints.append(QPointF(x, y));
+		}
+
+		QPen originalPen = painter.pen();
+		painter.setPen(_pen);
+		for (int i = 0; i < curvePoints.size() - 1; ++i) {
+			painter.drawLine(curvePoints[i], curvePoints[i + 1]);
+		}
+		painter.setPen(originalPen);
+	}
+	inline int combination(int n, int k) {
+		if (k == 0 || k == n) return 1;
+		return combination(n - 1, k - 1) + combination(n - 1, k);
+	}
+};
+
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
@@ -431,6 +502,8 @@ private:
 
 	// Bezier曲线
 	int isOnPoint1; // 是否在控制点上bezier
+	QVector<QPoint> bezierControlPoints;
+	int selectedControlPoint = -1; // 用于跟踪当前选中的控制点
 
 protected:
 	// 重写绘制事件
@@ -440,6 +513,19 @@ protected:
 		int i1 = 0, i2 = 0, i3 = 0, i4 = 0;
 		clearMAP(MAP);
 		QPainter painter(this);
+
+		// 绘制Bezier曲线
+		if (mode == BezierMode && bezierControlPoints.size() > 1) {
+			QPen bezierPen(Qt::black, lineWidth);
+			Bezier bezier(1, painter, bezierControlPoints.toVector(), bezierPen);
+			bezier.drawBezier();
+		}
+
+		// 绘制Beizer控制点
+		painter.setPen(Qt::blue);
+		for (const QPoint& point : bezierControlPoints) {
+			painter.drawEllipse(point, 5, 5);
+		}
 
 		// 每次刷新的时候重新绘制已存在直线
 		for (int c = 0; c < shape.size(); c++) {
@@ -596,6 +682,7 @@ protected:
 					drawMidpointArc(painter, center, radius, 0, endAngle);
 				}
 			}
+
 		}
 	}
 
@@ -1426,6 +1513,10 @@ protected:
 				// 放里面当然用不了重绘啦
 				clipEndPoint = event->pos();
 			}
+			else if (mode == BezierMode && selectedControlPoint != -1) {
+				bezierControlPoints[selectedControlPoint] = event->pos(); // 更新控制点位置
+			}
+
 
 			update(); // 触发重绘
 		}
@@ -1494,6 +1585,24 @@ protected:
 				_cropPolygon.append(a);
 				update();
 			}
+			else if (mode == BezierMode) {
+				QPoint pos = event->pos();
+				// 检查是否点击在已有的控制点附近
+				bool pointSelected = false;
+				for (int i = 0; i < bezierControlPoints.size(); ++i) {
+					if ((pos - bezierControlPoints[i]).manhattanLength() < 10) {
+						selectedControlPoint = i;  // 选择已有的点进行拖动
+						pointSelected = true;
+						break;
+					}
+				}
+				if (!pointSelected) {
+					// 添加新的控制点
+					bezierControlPoints.append(pos);
+					selectedControlPoint = -1; // 不选中新点
+				}
+				update(); // 更新绘图
+			}
 
 			hasStartPoint = true;
 			drawing = false; // 初始化为不绘制实际直线
@@ -1549,6 +1658,10 @@ protected:
 			if (mode == TransMode) {
 				iscomfirm = true;
 			}
+			else if (mode == BezierMode) {
+				selectedControlPoint = -1;  // Deselect control point
+			}
+
 
 			drawing = true;         // 绘制完成
 			update();               // 触发重绘
@@ -1702,6 +1815,8 @@ public:
 		modeComboBox->addItem("Fill", FillMode);
 		modeComboBox->addItem("Trim", TrimMode);
 		modeComboBox->addItem("Transform", TransMode);
+		modeComboBox->addItem("Bezier Curve", BezierMode);
+
 
 		// 创建下拉框并添加算法选项
 		line_algorithmComboBox = new QComboBox(this);
