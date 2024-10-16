@@ -43,7 +43,7 @@ public:
 	}
 };
 
-// 一部分的 函数声明
+// 用于实现Bezier，增广到了double精度
 class point2d {
 public:
 	double x, y;
@@ -53,6 +53,7 @@ public:
 	void seY(double Y) { x = Y; }
 };
 
+// 一部分的 函数声明
 void initMAP(vector<vector<pointData>>& MAP);
 void clearMAP(vector<vector<pointData>>& MAP);
 
@@ -88,6 +89,7 @@ enum transMode {
 	MOVE,
 	ZOOM,
 	ROTATE,
+	BEZIER,
 };
 
 // 结构体来存储每条线的信息，包括起点、终点和线条宽度
@@ -500,31 +502,22 @@ private:
 	QRect* transRectTag = new QRect(100, 100, 20, 20);             //标签矩形
 
 	// Bezier曲线
-	int isOnPoint1; // 是否在控制点上bezier
-	QVector<QPoint> bezierControlPoints;
+	int isOnPoint1; // 是否在控制点上Bezier
+	QVector<QVector<QPoint>> all_beziers;	// 所有的Bezier曲线
+	QVector<QPoint> all_bezierControlPoints;	// 所有的Bezier曲线控制点
+	QVector<QPoint> bezierControlPoints;	// 暂存的当前Bezier曲线控制点
 	int selectedControlPoint = -1; // 用于跟踪当前选中的控制点
+	int SelectedBezier = -1, SelectedPoint = -1;
+	bool ctr_or_not = false;
 
 protected:
 	// 重写绘制事件
 	void paintEvent(QPaintEvent* event) override
 	{
 		// 各类图形的计数器，控制从vector中取出的顺序
-		int i1 = 0, i2 = 0, i3 = 0, i4 = 0;
+		int i1 = 0, i2 = 0, i3 = 0, i4 = 0, i5 = 0;
 		clearMAP(MAP);
 		QPainter painter(this);
-
-		// 绘制Bezier曲线
-		if (mode == BezierMode && bezierControlPoints.size() > 1) {
-			QPen bezierPen(Qt::black, lineWidth);
-			Bezier bezier(1, painter, bezierControlPoints.toVector(), bezierPen);
-			bezier.drawBezier();
-		}
-
-		// 绘制Beizer控制点
-		painter.setPen(Qt::blue);
-		for (const QPoint& point : bezierControlPoints) {
-			painter.drawEllipse(point, 5, 5);
-		}
 
 		// 每次刷新的时候重新绘制已存在直线
 		for (int c = 0; c < shape.size(); c++) {
@@ -588,6 +581,38 @@ protected:
 				painter.setPen(pen);
 				qDebug() << "In paintevent : " << fill.color << " " << Fill(fill).point.Getx() << " " << Fill(fill).point.Gety();
 				fillShape(painter, fill.point, fill.color);
+			}
+			// 重绘Bezier曲线
+			else if (shape.at(c) == 5 && all_beziers.size() > i5) {
+				painter.setPen(Qt::blue);
+				const QVector<QPoint>& ControlPoints = all_beziers.at(i5++);
+				// 绘制Beizer控制点
+				if (ctr_or_not) {
+					for (const QPoint& point : ControlPoints) {
+						painter.drawEllipse(point, 5, 5);
+					}
+				}
+				// 绘制Bezier曲线
+				if (ControlPoints.size() > 1) {
+					QPen bezierPen(Qt::black, lineWidth);
+					Bezier bezier(1, painter, ControlPoints.toVector(), bezierPen);
+					bezier.drawBezier();
+				}
+			}
+		}
+
+		// 绘制当前正在创建的Bezier曲线
+		if (mode == BezierMode && bezierControlPoints.size() > 1) {
+			QPen bezierPen(Qt::black, lineWidth);
+			Bezier bezier(1, painter, bezierControlPoints.toVector(), bezierPen);
+			bezier.drawBezier();
+		}
+
+		// 绘制当前正在创建的Beizer控制点
+		if (mode == BezierMode) {
+			painter.setPen(Qt::blue);
+			for (const QPoint& point : bezierControlPoints) {
+				painter.drawEllipse(point, 5, 5);
 			}
 		}
 
@@ -1512,10 +1537,12 @@ protected:
 				// 放里面当然用不了重绘啦
 				clipEndPoint = event->pos();
 			}
-			else if (mode == BezierMode && selectedControlPoint != -1) {
+			else if (mode == BezierMode && selectedControlPoint != -1 && !ctr_or_not) {
 				bezierControlPoints[selectedControlPoint] = event->pos(); // 更新控制点位置
 			}
-
+			else if (mode == BezierMode && SelectedBezier != -1 && SelectedPoint != -1 && ctr_or_not) {
+				all_beziers[SelectedBezier][SelectedPoint] = event->pos();// 更新控制点位置
+			}
 
 			update(); // 触发重绘
 		}
@@ -1584,7 +1611,7 @@ protected:
 				_cropPolygon.append(a);
 				update();
 			}
-			else if (mode == BezierMode) {
+			else if (mode == BezierMode && !ctr_or_not) {
 				QPoint pos = event->pos();
 				// 检查是否点击在已有的控制点附近
 				bool pointSelected = false;
@@ -1601,6 +1628,25 @@ protected:
 					selectedControlPoint = -1; // 不选中新点
 				}
 				update(); // 更新绘图
+			}
+			else if (mode == BezierMode && ctr_or_not) {
+				QPoint pos = event->pos();
+				// 检查是否点击在已有的控制点附近
+				bool pointSelected = false;
+				for (int i = 0; i < all_beziers.size(); ++i) {
+					for (int j = 0; j < all_beziers[i].size(); j++) {
+						if ((pos - all_beziers[i][j]).manhattanLength() < 10) {
+							SelectedBezier = i;  // 选择已有的点进行拖动
+							SelectedPoint = j;
+							pointSelected = true;
+							break;
+						}
+					}
+				}
+				if (!pointSelected) {
+					SelectedBezier = -1; // 不选中新点
+					SelectedPoint = -1;
+				}
 			}
 
 			hasStartPoint = true;
@@ -1653,8 +1699,7 @@ protected:
 					line.line.setP2(lineF.p2().toPoint());
 				}
 			}
-
-			if (mode == TransMode) {
+			else if (mode == TransMode) {
 				iscomfirm = true;
 			}
 			else if (mode == BezierMode) {
@@ -1717,8 +1762,27 @@ protected:
 
 	// 处理按键事件
 	void keyPressEvent(QKeyEvent* event) override {
-		if (event->key() == Qt::Key_Escape) {
+		if (mode == BezierMode && event->key() == Qt::Key_Return) {
+			all_beziers.append(bezierControlPoints);
+			// qDebug() << "all_beziers's size: " << all_beziers.size() << "<<\n";
+			shape.append(5);
+			// qDebug() << "shape's size: " << shape.size() << "<<\n";
+			bezierControlPoints.clear();
 		}
+		if (event->key() == Qt::Key_Control) {
+			ctr_or_not = true;
+			qDebug() << "ctr_or_not" << ctr_or_not << "\n";
+		}
+		update();
+	}
+
+	void keyReleaseEvent(QKeyEvent* event) override {
+		if (event->key() == Qt::Key_Control)
+		{
+			ctr_or_not = false;
+			qDebug() << "ctr_or_not" << ctr_or_not << "\n";
+		}
+		update();
 	}
 
 public:
@@ -1741,6 +1805,9 @@ public:
 			lines.append(Line(QPoint(tem[i][0], tem[i][1]), QPoint(tem[i + 1][0], tem[i + 1][1]), 1, Qt::black, Midpoint));
 			shape.append(1);
 		}
+
+		// 确保窗口部件可以接收键盘焦点
+		setFocusPolicy(Qt::StrongFocus);
 	}
 
 	// 设置当前绘图模式
