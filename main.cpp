@@ -15,7 +15,6 @@
 using namespace std;
 
 //TODO:绘制弧线的 起始角 大于 结束角 功能未完善
-//调试的时候我把fill在选单里注释掉了，我把fill在选单里注释掉了，我把fill在选单里注释掉了，好困（？）
 
 // 用于SutherlandTrim
 enum OutCode {
@@ -44,9 +43,9 @@ public:
 	}
 };
 
+// 一部分的 函数声明
 void initMAP(vector<vector<pointData>>& MAP);
 void clearMAP(vector<vector<pointData>>& MAP);
-// QVector<QPoint> cropPolygon(const QVector<QPoint>& polygon, const QVector<QPoint>& cropPolygon);
 
 // 功能类型：直线、圆弧、多边形、填充、裁剪
 enum DrawMode {
@@ -146,6 +145,22 @@ public:
 	}
 };
 
+// 将Point类型的点转换为QPoint
+QPoint P2QP(Point p) {
+	QPoint res;
+	res.setX(p.x);
+	res.setY(p.y);
+	return res;
+}
+
+// 将Point类型的点转换为QPoint
+Point QP2P(QPoint p) {
+	Point res;
+	res.x = p.x();
+	res.y = p.y();
+	return res;
+}
+
 // 结构体来存储多边形每个边的信息，为多边形绘制服务
 struct Edge {
 	int yMax;
@@ -207,6 +222,25 @@ public:
 		qDebug() << "\n";
 	}
 };
+
+// 将自定义Polygon类型的Polygon转为QVector(QPoint)
+QVector<QPoint> P2QV(Polygon p) {
+	QVector<QPoint> res;
+	for (int i = 0; i < p.points.size() - 1; i++) {
+		res.push_back(P2QP(p.points[i]));
+	}
+	return res;
+}
+
+// 将QVector(QPoint)转为自定义Polygon类型的Polygon
+Polygon QV2P(QVector<QPoint> q) {
+	Polygon res;
+	for (int i = 0; i < q.size(); i++) {
+		res.points.push_back(QP2P(q[i]));
+	}
+	res.points.push_back(res.points[0]);
+	return res;
+}
 
 // 填充（种子点）
 class Fill {
@@ -337,7 +371,6 @@ public:
 	}
 };
 
-
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
@@ -366,7 +399,7 @@ private:
 	QVector<Arc> arcs;          // 存储已绘制的直线段
 
 	// 多边形
-	vector<Polygon> polygons; // 存储多个多边形
+	QVector<Polygon> polygons; // 存储多个多边形
 	Polygon currentPolygon; // 当前正在绘制的多边形
 	vector<Fill> fills; // 存储多个多边形
 	QStack<Point> stack;
@@ -377,7 +410,7 @@ private:
 	QPoint clipEndPoint;    // 裁剪窗口的终点
 	clip_Algorithm  clip_algo = SutherlandTrim;// 当前选择的直线段裁剪算法
 	transMode trans_algo = MOVE;
-	QVector<QPoint>cropPolygon; // 裁切多边形
+	QVector<QPoint> _cropPolygon; // 裁切多边形
 
 	// 填充
 	Fill nowFill;
@@ -456,7 +489,6 @@ protected:
 				if (polygon.points.size() > 1) {
 					for (size_t i = 0; i < polygon.points.size() - 1; ++i) {
 						drawDDALine(painter, QPoint(polygon.points[i].x, polygon.points[i].y), QPoint(polygon.points[i + 1].x, polygon.points[i + 1].y));
-						//painter.drawLine(polygon.points[i].x, polygon.points[i].y, polygon.points[i + 1].x, polygon.points[i + 1].y);
 					}
 				}
 				if (polygon.isClosed()) {
@@ -481,12 +513,12 @@ protected:
 			}
 		}
 
-		//// 绘制当前正在创建的多边形裁剪窗口
-		//if (croppolygon.points.size() > 1) {
-		//	for (size_t i = 0; i < croppolygon.points.size() - 1; ++i) {
-		//		painter.drawLine(croppolygon.points[i].x, croppolygon.points[i].y, croppolygon.points[i + 1].x, croppolygon.points[i + 1].y);
-		//	}
-		//}
+		// 绘制当前正在创建的多边形裁剪窗口
+		if (_cropPolygon.size() > 1) {
+			for (size_t i = 0; i < _cropPolygon.size() - 1; ++i) {
+				painter.drawLine(_cropPolygon[i].x(), _cropPolygon[i].y(), _cropPolygon[i + 1].x(), _cropPolygon[i + 1].y());
+			}
+		}
 
 		// 如果有起点，绘制线段的预览
 		if (hasStartPoint) {
@@ -513,7 +545,7 @@ protected:
 					drawMidpointArc(painter, center, radius, 0, endAngle);
 				}
 			}
-			else if (mode == TrimMode) {
+			else if (mode == TrimMode && clip_algo != CropPolygon) {
 				// 更新预览用画笔
 				pen.setWidth(2);
 				painter.setPen(pen);
@@ -590,16 +622,6 @@ protected:
 			MAP[x][y].setColor(painter.pen().color());
 		}
 	};
-
-	// 这是...？什么？不知道！就放着吧~
-	// lyc：遥我知道是你的评论
-	// lyc：？？？你看看自己在说什么
-	// lyc：等我写完裁剪多边形让我看下是啥时候加进去的
-	void drawPixel(int x, int y, vector<vector<pointData>>& MAP2, QColor color) {
-		if (checkLegalPos(x, y, 800, 550)) {  // 确保像素位置合法
-			MAP2[x][y].setColor(color);  // 更新 MAP2 的颜色
-		}
-	}
 
 	// 绘制预览实线(不更新MAP)
 	void drawPreviewSolid(QPainter& painter, QPoint p1, QPoint p2)
@@ -1234,6 +1256,96 @@ protected:
 		}
 	}
 
+	// 检测点是否在多边形外
+	bool outsideOneEdgeOfPolygon(QVector<QPoint> polygon, QPoint p, int x) {
+		QPoint p1 = polygon[x];
+		QPoint p2 = polygon[(x + 1) % int(polygon.length())];
+		QPoint p3 = polygon[(x + 2) % int(polygon.length())];
+		int a = p2.y() - p1.y();
+		int b = p1.x() - p2.x();
+		int c = p2.x() * p1.y() - p1.x() * p2.y();
+		if (a < 0) {
+			a = -a;
+			b = -b;
+			c = -c;
+		}
+		int pointD = a * p.x() + b * p.y() + c;
+		int polyNextPointD = a * p3.x() + b * p3.y() + c;
+		if (pointD * polyNextPointD >= 0) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	// 判断点p是否位于裁剪边p1-p2的内侧（针对凸多边形）
+	bool isInside(QPoint p, QPoint p1, QPoint p2) {
+		return (p2.x() - p1.x()) * (p.y() - p1.y()) - (p2.y() - p1.y()) * (p.x() - p1.x()) <= 0;
+	}
+
+	// 计算两条线段的交点，如果平行则返回QPoint(-1, -1)
+	QPoint intersection(QPoint p1, QPoint p2, QPoint k1, QPoint k2) {
+		double a1 = p2.y() - p1.y();
+		double b1 = p1.x() - p2.x();
+		double c1 = a1 * p1.x() + b1 * p1.y();
+
+		double a2 = k2.y() - k1.y();
+		double b2 = k1.x() - k2.x();
+		double c2 = a2 * k1.x() + b2 * k1.y();
+
+		double determinant = a1 * b2 - a2 * b1;
+
+		if (std::abs(determinant) < 1e-10) {  // 检查是否平行
+			return QPoint(-1, -1); // 平行线没有交点
+		}
+		else {
+			double x = (b2 * c1 - b1 * c2) / determinant;
+			double y = (a1 * c2 - a2 * c1) / determinant;
+			return QPoint(static_cast<int>(std::round(x)), static_cast<int>(std::round(y)));
+		}
+	}
+
+	// 根据给定多边形裁剪现有多边形
+	QVector<QPoint> cropPolygon(const QVector<QPoint>& subjectPolygon, const QVector<QPoint>& clipPolygon) {
+		QVector<QPoint> output = subjectPolygon;
+
+		for (int i = 0; i < clipPolygon.size(); ++i) {
+			QVector<QPoint> input = output;
+			output.clear();
+
+			// 当前裁剪边的两个顶点
+			QPoint clipEdgeStart = clipPolygon[i];
+			QPoint clipEdgeEnd = clipPolygon[(i + 1) % clipPolygon.size()];
+
+			for (int j = 0; j < input.size(); ++j) {
+				// 被裁剪多边形当前边的两个顶点
+				QPoint currentPoint = input[j];
+				QPoint previousPoint = input[(j - 1 + input.size()) % input.size()];
+
+				bool currentInside = isInside(currentPoint, clipEdgeStart, clipEdgeEnd);
+				bool previousInside = isInside(previousPoint, clipEdgeStart, clipEdgeEnd);
+
+				if (currentInside) {
+					if (!previousInside) {
+						// 如果从外部进入，计算交点
+						QPoint inter = intersection(previousPoint, currentPoint, clipEdgeStart, clipEdgeEnd);
+						output.append(inter); // 添加交点
+					}
+					// 当前点在内侧，保留该点
+					output.append(currentPoint);
+				}
+				else if (previousInside) {
+					// 如果从内部离开，计算交点
+					QPoint inter = intersection(previousPoint, currentPoint, clipEdgeStart, clipEdgeEnd);
+					output.append(inter); // 添加交点
+				}
+			}
+		}
+
+		return output;
+	}
+
 	// 处理鼠标移动事件
 	void mouseMoveEvent(QMouseEvent* event) override {
 		// 定位当前鼠标所指的多边形
@@ -1267,8 +1379,6 @@ protected:
 
 		if (!isArrow && mode == TransMode) {
 			setCursor(Qt::SizeAllCursor);//拖拽模式下，并且在拖拽图形中，将光标形状改为十字
-			//if(event->button() == Qt::LeftButton){ qDebug() << "button:: " << "" << "\n"; }
-
 			if (!(*nowPolygon).points.empty()) {
 				polygonTrans(event);
 				update();
@@ -1282,8 +1392,6 @@ protected:
 			transMatrix trM;
 			QPoint tem = QPoint((*nowPolygon).points[0].Getx(), (*nowPolygon).points[0].Gety());
 			trM.setMoveTrans(tem - transRectTag->center());
-			//transRectTag->setTopLeft(trM * (transRectTag->topLeft()));
-			//transRectTag->setBottomRight(trM * (transRectTag->bottomRight()));
 			transRectTag->setBottomRight(QPoint((trM * (transRectTag->topLeft())).Getx(), (trM * (transRectTag->topLeft())).Gety()));
 			transRectTag->setBottomRight(QPoint((trM * (transRectTag->bottomRight())).Getx(), (trM * (transRectTag->bottomRight())).Gety()));
 		}
@@ -1375,18 +1483,17 @@ protected:
 				fills.push_back(Fill(Point(event->pos().x(), event->pos().y()), currentLineColor));
 				shape.push_back(4);
 			}
-			else if (mode == TrimMode && !clip_algo == CropPolygon) {
+			else if (mode == TrimMode && clip_algo != CropPolygon) {
 				clipStartPoint = event->pos();  // 记录鼠标按下的位置作为起点
 				clipEndPoint = clipStartPoint;
 			}
-			//else if (mode == TrimMode && clip_algo == CropPolygon) {
-			//	QPoint a;
-			//	a.setX(event->pos().x());
-			//	a.setY(event->pos().y());
-			//	cropPolygon.append(a);
-			//	shape.push_back(5);
-			//	update();
-			//}
+			else if (mode == TrimMode && clip_algo == CropPolygon) {
+				QPoint a;
+				a.setX(event->pos().x());
+				a.setY(event->pos().y());
+				_cropPolygon.append(a);
+				update();
+			}
 
 			hasStartPoint = true;
 			drawing = false; // 初始化为不绘制实际直线
@@ -1462,52 +1569,38 @@ protected:
 				update();
 			}
 		}
-		//// 双击事件封闭当前多边形裁剪区域
-		//if (mode == TrimMode && clip_algo == CropPolygon) {
-		//	if (croppolygon.points.size() > 2) {
-		//		croppolygon.closePolygon(); // 封闭当前多边形
-		//		//shape.push_back(8);
-		//		//polygons.push_back(currentPolygon); // 保存到多边形列表
-		//		isCropPolygonReady = true;
-		//		update();
-		//		qDebug() << "Enter Polygon Cut!!!\n";
-		//		qDebug() << "裁剪区域有： " << croppolygon.points.size() << "\n";
-		//		if (mode == TrimMode && clip_algo == CropPolygon && isCropPolygonReady) {
-		//			update();
-		//			vector<Polygon> newPolygon;
-		//			vector<int> deleteIndex;
-		//			int k = 0;
-		//			for (int i = 0; i < shape.length(); i++) {
-		//				if (shape.at(i) == 3) {
-		//					Polygon polygon = cropPolygon(polygons[k++], croppolygon);
-		//					if (polygon.length() >= 3) {
-		//						// 如果返回的多边形的长度大于等于3，则说明裁切后的多边形不为空，将他们追加到新的多边形数组中
-		//						newPolygon.push_back(polygon);
-		//					}
-		//					deleteIndex.push_back(i);
-		//				}
-		//			}
-		//			sort(deleteIndex.rbegin(), deleteIndex.rend());
-		//			for (int i = 0; i < deleteIndex.size(); ++i) {
-		//				polygons.erase(polygons.begin() + deleteIndex.size() - i - 1);
-		//				shape.remove(deleteIndex[i]);
-		//			}
-		//			// 找到裁切多边形 == 8，并删除它
-		//			for (int i = 0; i < shape.length(); i++) {
-		//				if (shape.at(i) == 8) {
-		//					shape.remove(i);
-		//				}
-		//			}
-		//			croppolygon.clear(); // 清空当前裁剪区域
-		//			for (int i = 0; i < newPolygon.size(); ++i) {
-		//				polygons.push_back(newPolygon.at(i));
-		//				newPolygon.at(i).print();
-		//				shape.append(3);
-		//				update();
-		//			}
-		//		}
-		//	}
-		//}
+		// 双击事件封闭当前多边形裁剪区域
+		if (mode == TrimMode && clip_algo == CropPolygon) {
+			update();
+			QVector<QVector<QPoint>> newPolygon;
+			vector<int> deleteIndex;
+			int k = 0;
+			for (int i = 0; i < shape.length(); i++) {
+				if (shape.at(i) == 3) {
+					qDebug() << "has Polygon\n";
+					// QPen pen = _brush.at(i);
+					QVector<QPoint> polygon = cropPolygon(P2QV(polygons.at(k++)), _cropPolygon);
+					qDebug() << "now the p has ::" << polygon.size() << "<<\n";
+					if (polygon.length() >= 3) {
+						qDebug() << "has new Polygon!\n";
+						// 如果返回的多边形的长度大于等于3，则说明裁切后的多边形不为空，将他们追加到新的多边形数组中
+						newPolygon.append(polygon);
+					}
+					deleteIndex.push_back(i);
+				}
+			}
+			sort(deleteIndex.rbegin(), deleteIndex.rend());
+			for (int i = 0; i < deleteIndex.size(); ++i) {
+				polygons.remove(deleteIndex.size() - i - 1);
+				shape.remove(deleteIndex[i]);
+			}
+			_cropPolygon.clear();
+			for (int i = 0; i < newPolygon.length(); ++i) {
+				polygons.append(QV2P(newPolygon.at(i)));
+				shape.append(3);
+				update();
+			}
+		}
 	}
 
 	// 处理按键事件
@@ -1606,7 +1699,7 @@ public:
 		modeComboBox->addItem("Circle", CircleMode);
 		modeComboBox->addItem("Arc", ArcMode);
 		modeComboBox->addItem("Shape", PolygonMode);
-		/*modeComboBox->addItem("Fill", FillMode);*/
+		modeComboBox->addItem("Fill", FillMode);
 		modeComboBox->addItem("Trim", TrimMode);
 		modeComboBox->addItem("Transform", TransMode);
 
