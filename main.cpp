@@ -383,7 +383,7 @@ public:
 	}
 };
 
-
+// Bezier曲线
 class Bezier {
 private:
 	vector<vector<int>> const* brush;
@@ -453,9 +453,10 @@ private:
 	bool hasStartPoint = false; // 是否有起点
 	bool drawing = false;       // 是否正在绘制（用来控制鼠标释放时的动作）
 	QColor currentLineColor = Qt::black;    // 当前线条颜色
-	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形
+	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形 4.种子点 5.Bezier
 	float XL = 0, XR = 800, YB = 0, YT = 550;
 	Point _begin = Point(0, 0); // 拖拽的参考坐标，方便计算位移
+	QLabel* coordLabel;
 
 	// 直线段
 	QPoint startPoint;          // 线段的起点
@@ -504,7 +505,6 @@ private:
 	// Bezier曲线
 	int isOnPoint1; // 是否在控制点上Bezier
 	QVector<QVector<QPoint>> all_beziers;	// 所有的Bezier曲线
-	QVector<QPoint> all_bezierControlPoints;	// 所有的Bezier曲线控制点
 	QVector<QPoint> bezierControlPoints;	// 暂存的当前Bezier曲线控制点
 	int selectedControlPoint = -1; // 用于跟踪当前选中的控制点
 	int SelectedBezier = -1, SelectedPoint = -1;
@@ -594,7 +594,7 @@ protected:
 				}
 				// 绘制Bezier曲线
 				if (ControlPoints.size() > 1) {
-					QPen bezierPen(Qt::black, lineWidth);
+					QPen bezierPen(currentLineColor, lineWidth);
 					Bezier bezier(1, painter, ControlPoints.toVector(), bezierPen);
 					bezier.drawBezier();
 				}
@@ -603,7 +603,7 @@ protected:
 
 		// 绘制当前正在创建的Bezier曲线
 		if (mode == BezierMode && bezierControlPoints.size() > 1) {
-			QPen bezierPen(Qt::black, lineWidth);
+			QPen bezierPen(currentLineColor, lineWidth);
 			Bezier bezier(1, painter, bezierControlPoints.toVector(), bezierPen);
 			bezier.drawBezier();
 		}
@@ -1459,6 +1459,14 @@ protected:
 
 	// 处理鼠标移动事件
 	void mouseMoveEvent(QMouseEvent* event) override {
+		// 获取鼠标的局部坐标（相对于窗口）
+		QPoint localPos = event->pos();
+
+		// 更新标签显示的鼠标坐标
+		coordLabel->setText(QString("(%1, %2)")
+			.arg(localPos.x())
+			.arg(localPos.y()));
+
 		// 定位当前鼠标所指的多边形
 		if (polygons.size() > 0) {
 			for (int i = 0; i < polygons.size(); i++) {
@@ -1550,6 +1558,7 @@ protected:
 
 	// 处理鼠标按下事件
 	void mousePressEvent(QMouseEvent* event) override {
+		setCursor(Qt::ArrowCursor);//恢复原始光标形状
 		if (event->button() == Qt::MiddleButton) {
 			if (mode == TransMode) {
 				referancePoint = event->pos();
@@ -1773,6 +1782,29 @@ protected:
 			ctr_or_not = true;
 			qDebug() << "ctr_or_not" << ctr_or_not << "\n";
 		}
+		if (event->key() == Qt::Key_Z && (event->modifiers() & Qt::ControlModifier)) {
+			if (shape.size() > 0) {
+				switch (shape.last())
+				{
+				case 1:
+					lines.pop_back();
+					break;
+				case 2:
+					arcs.pop_back();
+					break;
+				case 3:
+					polygons.pop_back();
+					break;
+				case 4:
+					fills.pop_back();
+					break;
+				case 5:
+					all_beziers.pop_back();
+					break;
+				}
+				shape.pop_back();
+			}
+		}
 		update();
 	}
 
@@ -1808,6 +1840,18 @@ public:
 
 		// 确保窗口部件可以接收键盘焦点
 		setFocusPolicy(Qt::StrongFocus);
+
+		// 创建一个标签用于显示鼠标坐标
+
+		coordLabel = new QLabel("(0, 0)", this);
+		coordLabel->setMinimumWidth(250);
+		QStatusBar* statusBar = new QStatusBar(this);
+		statusBar->addWidget(coordLabel);
+		statusBar->setGeometry(0, 525, 600, 20);
+		statusBar->setStyleSheet("border: solid black 2px;");
+
+		// 启用鼠标追踪（否则只在按下按钮时才会追踪鼠标移动）
+		// setMouseTracking(true);
 	}
 
 	// 设置当前绘图模式
@@ -1819,7 +1863,7 @@ public:
 	// 新增：设置线条宽度的函数
 	void setLineWidth(int width) {
 		lineWidth = width;
-		// update();  // 每次改变宽度时，触发重新绘制
+		update();  // 每次改变宽度时，触发重新绘制
 	}
 
 	//  新增：设置当前线条颜色
@@ -1853,6 +1897,22 @@ public:
 		endAngle = end;
 		update();  // 触发重绘
 	}
+
+	// 新增：清空画布功能
+	void Clear()
+	{
+		shape.clear();
+		lines.clear();
+		arcs.clear();
+		polygons.clear();
+		fills.clear();
+		stack.clear();
+		_cropPolygon.clear();
+		all_beziers.clear();
+		bezierControlPoints.clear();
+		clearMAP(MAP);
+		update();
+	}
 };
 
 class MainWindow : public QWidget {
@@ -1867,6 +1927,7 @@ private:
 	QPushButton* colorButton;       // 新增：颜色 选择按钮
 	QComboBox* lineTypeComboBox;    // 新增：线型 选择按钮
 	QComboBox* transModeComboBox;    // 新增：线型 选择按钮
+	QPushButton* clearButton;		// 新增：清除按钮
 
 public:
 	MainWindow(QWidget* parent = nullptr) : QWidget(parent) {
@@ -1911,6 +1972,9 @@ public:
 		// 创建颜色选择按钮
 		colorButton = new QPushButton("Choose Painter Color", this);
 
+		// 创建清空画布按钮
+		clearButton = new QPushButton("Clear", this);
+
 		// 水平布局管理器（此处暂时只有右侧）
 		QVBoxLayout* rightLayout = new QVBoxLayout();
 		rightLayout->addWidget(new QLabel("Select Painting Mode:"));
@@ -1925,6 +1989,7 @@ public:
 		rightLayout->addWidget(widthSlider);        // 新增：将滑动条添加到右侧布局
 		rightLayout->addWidget(colorButton);        // 新增：将颜色按钮添加到布局
 		rightLayout->addStretch();
+		rightLayout->addWidget(clearButton);
 
 		// 垂直布局管理器
 		QHBoxLayout* mainLayout = new QHBoxLayout(this);
@@ -1975,6 +2040,8 @@ public:
 				}
 			}
 			});
+
+		connect(clearButton, &QPushButton::clicked, shapeDrawer, &ShapeDrawer::Clear);
 
 		setLayout(mainLayout);
 		setWindowTitle("Drawing with Algorithms");
