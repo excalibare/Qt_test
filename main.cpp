@@ -44,7 +44,6 @@ public:
 };
 
 // 一部分的 函数声明
-=======
 class point2d {
 public:
 	double x, y;
