@@ -107,6 +107,12 @@
     </QtMoc>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="arc.h" />
+    <ClInclude Include="fill.h" />
+    <ClInclude Include="line.h" />
+    <ClInclude Include="polygon.h" />
+    <ClInclude Include="tools.h" />
+    <ClInclude Include="transmatrix.h" />
     <QtRcc Include="Qt_test.qrc" />
     <QtUic Include="Qt_test.ui" />
     <QtMoc Include="Qt_test.h" />
@@ -117,6 +123,8 @@
       <DynamicSource Condition="'$(Configuration)|$(Platform)'=='Release|x64'">input</DynamicSource>
       <QtMocFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(Filename).moc</QtMocFileName>
     </ClCompile>
+    <ClInclude Include="bezier.h" />
+    <ClInclude Include="point.h" />
     <ClInclude Include="stdafx.h" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">Create</PrecompiledHeader>

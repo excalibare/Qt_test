@@ -1,520 +1,28 @@
 #include <QApplication>
 #include <QWidget>
-#include <QPainter>
-#include <QMouseEvent>
-#include <QComboBox>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QSlider>
-#include <QLabel>
-#include <QPen>
 #include <cmath>
-#include <QInputDialog>
 #include <vector>
 #include "stdafx.h"
+#include "point.h"
+#include "bezier.h"
+#include "tools.h"
+#include "fill.h"
+#include "line.h"
+#include "polygon.h"
+#include "arc.h"
+#include "transmatrix.h"
+//#include <QInputDialog>
+//#include <QPainter>
+//#include <QMouseEvent>
+//#include <QComboBox>
+//#include <QHBoxLayout>
+//#include <QVBoxLayout>
+//#include <QSlider>
+//#include <QLabel>
+//#include <QPen>
 using namespace std;
 
 //TODO:绘制弧线的 起始角 大于 结束角 功能未完善
-
-// 用于SutherlandTrim
-enum OutCode {
-	INSIDE = 0, // 0000
-	LEFT = 1,   // 0001
-	RIGHT = 2,  // 0010
-	BOTTOM = 4, // 0100
-	TOP = 8     // 1000
-};
-
-// 用于实现填充（ pointData 与 MAP ）
-class pointData {
-protected:
-	QPoint pos;
-	QColor color;
-public:
-	pointData(QPoint p, QColor c) {
-		pos = p;
-		color = c;
-	}
-	QColor getColor() {
-		return color;
-	}
-	void setColor(QColor c) {
-		color = c;
-	}
-};
-
-// 用于实现Bezier，增广到了double精度
-class point2d {
-public:
-	double x, y;
-	point2d() {}
-	point2d(double X, double Y) :x(X), y(Y) {}
-	void seX(double X) { x = X; }
-	void seY(double Y) { x = Y; }
-};
-
-// 一部分的 函数声明
-void initMAP(vector<vector<pointData>>& MAP);
-void clearMAP(vector<vector<pointData>>& MAP);
-void drawPixel(int x, int y, QPainter& painter);
-
-// 功能类型：直线、圆弧、多边形、填充、裁剪、变换、曲线
-enum DrawMode {
-	LineMode,
-	ArcMode,
-	CircleMode,
-	PolygonMode,
-	FillMode,
-	TrimMode,
-	TransMode,
-	BezierMode,
-	BsplineMode,
-};
-
-// 线段绘制算法
-enum line_Algorithm {
-	DDA,
-	Bresenham,
-	Midpoint,
-	DashLine,
-};
-
-// 裁剪控制算法
-enum clip_Algorithm {
-	SutherlandTrim,
-	MidTrim,
-	CropPolygon
-};
-
-// 变形模式
-enum transMode {
-	MOVE,
-	ZOOM,
-	ROTATE,
-	BEZIER,
-};
-
-// 结构体来存储每条线的信息，包括起点、终点和线条宽度
-struct Line {
-	QLine line;
-	int width;
-	QColor colour;  // lyc:6
-	line_Algorithm alg;
-	// Qt::PenStyle penStyle; // 线型
-
-	Line(QPoint p1, QPoint p2, int w, QColor c, line_Algorithm a) : line(p1, p2), width(w), colour(c), alg(a) {}
-};
-
-// 结构体来存储每条圆弧的信息，包括圆心、半径、起始角和结束角
-struct Arc {
-	QPoint center;  // 圆心
-	int radius;     // 半径
-	int startAngle; // 起始角度
-	int endAngle;   // 终止角度
-	int width;
-	QColor colour;
-	// Qt::PenStyle penStyle; // 线型
-
-	Arc(QPoint p, int r, int sa, int ea, int w, QColor c) :center(p), radius(r), startAngle(sa), endAngle(ea), width(w), colour(c) {}
-};
-
-// 结构体来存储每个点的信息，为多边形绘制服务
-struct Point {
-public:
-	int x, y;
-	Point(int x = 0, int y = 0) : x(x), y(y) {}
-	Point(QPoint p) : x(p.x()), y(p.y()) {}
-
-	int Getx() {
-		return x;
-	}
-	int Gety() {
-		return y;
-	}
-
-	constexpr inline int& rx() noexcept
-	{
-		return x;
-	}
-
-	constexpr inline int& ry() noexcept
-	{
-		return y;
-	}
-
-	// 重载，支持相减
-	Point operator-(const Point& b) {
-		Point ret;
-		ret.x = this->x - b.x;
-		ret.y = this->y - b.y;
-		return ret;
-	}
-
-	// 重载，支持相加
-	Point operator+(const Point& b) {
-		Point ret;
-		ret.x = this->x + b.x;
-		ret.y = this->y + b.y;
-		return ret;
-	}
-};
-
-// 将Point类型的点转换为QPoint
-QPoint P2QP(Point p) {
-	QPoint res;
-	res.setX(p.x);
-	res.setY(p.y);
-	return res;
-}
-
-// 将Point类型的点转换为QPoint
-Point QP2P(QPoint p) {
-	Point res;
-	res.x = p.x();
-	res.y = p.y();
-	return res;
-}
-
-// 结构体来存储多边形每个边的信息，为多边形绘制服务
-struct Edge {
-	int yMax;
-	float xMin, slopeReciprocal;
-};
-
-// 多边形
-class Polygon {
-public:
-	vector<Point> points; // 储存多边形的顶点
-	QColor color;
-	Polygon() {}
-
-	void addPoint(const Point& point) {
-		points.push_back(point);
-	}
-
-	void addPoint(const Polygon& polygon) {
-		for (int i = 0; i < polygon.points.size(); ++i) {
-			points.push_back(polygon.points[i]);
-		}
-	}
-
-	bool isClosed() const {
-		return points.size() > 2 && points.front().x == points.back().x && points.front().y == points.back().y;
-	}
-
-	void closePolygon() {
-		if (points.size() > 2 && !isClosed()) {
-			points.push_back(points.front()); // 封闭多边形
-		}
-	}
-
-	Polygon operator=(const Polygon& poly) {
-		this->points = poly.points;
-		this->color = poly.color;
-		return *this;
-	}
-
-	int length() {
-		return points.size();
-	}
-
-	void clear() {
-		vector<Point> tem;
-		points = tem;
-		color = Qt::black;
-	}
-
-	void remove(int i) {
-		points.erase(points.begin() + i);
-	}
-
-	void print() {
-		qDebug() << "The shape is: ";
-		for (int j = 0; j < points.size(); ++j) {
-			qDebug() << points[j].Getx() << " & " << points[j].Gety() << " || ";
-		}
-		qDebug() << "\n";
-	}
-};
-
-// 将自定义Polygon类型的Polygon转为QVector(QPoint)
-QVector<QPoint> P2QV(Polygon p) {
-	QVector<QPoint> res;
-	for (int i = 0; i < p.points.size() - 1; i++) {
-		res.push_back(P2QP(p.points[i]));
-	}
-	return res;
-}
-
-// 将QVector(QPoint)转为自定义Polygon类型的Polygon
-Polygon QV2P(QVector<QPoint> q) {
-	Polygon res;
-	for (int i = 0; i < q.size(); i++) {
-		res.points.push_back(QP2P(q[i]));
-	}
-	res.points.push_back(res.points[0]);
-	return res;
-}
-
-// 填充（种子点）
-class Fill {
-public:
-	Point point; // 储存种子点
-	QColor color; // 储存填充颜色
-
-	Fill(Point t_point, QColor t_color) :point(t_point), color(t_color) {}
-	Fill() :point(Point(10, 10)), color(Qt::black) {}
-};
-
-// 变换矩阵
-class transMatrix {
-private:
-	int reference_x = 0, reference_y = 0;   //参考点
-	double tr[3][3] = { 1,0,0,
-					  0,1,0,   //变换矩阵
-					  0,0,1 };
-
-public:
-	/**构造与初始化函数**/
-	transMatrix(int refer_X = 0, int refer_Y = 0) {  //以参考点xy构造，默认都为0
-		reference_x = refer_X;
-		reference_y = refer_Y;
-	}
-	transMatrix(Point q) {   //兼容用Point直接作为参考点构造，便于程序中与鼠标交互
-		reference_x = q.x;
-		reference_y = q.y;
-	}
-	void setReference(int refer_X = 0, int refer_Y = 0) {  //以xy作为参数重新设置参考点
-		reference_x = refer_X;
-		reference_y = refer_Y;
-	}
-	void setReference(Point q) {   //以Point设置参考点
-		reference_x = q.x;
-		reference_y = q.y;
-	}
-
-	/**功能函数**/
-	void Reset() {   //将矩阵重置为没有任何变换效果的初值
-		for (int i = 0; i < 3; ++i) {
-			for (int j = 0; j < 3; ++j) {
-				if (i != j)
-					tr[i][j] = 0;
-				else
-					tr[i][j] = 1;
-			}
-		}
-	}
-
-	void setRotateTrans(double angle) {   //设置旋转功能，调用该函数传入一个角度值，自动将矩阵设置为对应的变换矩阵，并覆盖原内容
-		Reset();
-		angle = angle * 3.1415926 / 180;      //角度转弧度
-		tr[0][0] = cos(angle);
-		tr[0][1] = -sin(angle);
-		tr[1][0] = -tr[0][1];
-		tr[1][1] = tr[0][0];
-	}
-
-	void setZoomTrans(double z_X, double z_Y) {   //设置缩放功能，与设置旋转类似，参数为x与y方向的缩放比例
-		Reset();
-		tr[0][0] = z_X;
-		tr[1][1] = z_Y;
-	}
-
-	void setMoveTrans(double m_X, double m_Y) {   //设置移动功能，与设置旋转类似，参数为x与y方向的移动距离
-		Reset();
-		tr[0][2] = m_X;
-		tr[1][2] = m_Y;
-	}
-	void setMoveTrans(Point movevec) {   //设置移动功能重载，使用一个point作为向量修改移动距离
-		Reset();
-		tr[0][2] = movevec.Getx();
-		tr[1][2] = movevec.Gety();
-	}
-	void setMoveTrans(QPoint movevec) {   //设置移动功能重载，使用一个Qpoint作为向量修改移动距离
-		Reset();
-		tr[0][2] = movevec.x();
-		tr[1][2] = movevec.y();
-	}
-
-	/**运算符重载**/
-	double* operator[](int index) {    //下标符重载，调用一次返回一个行指针，需要再使用一次下标符取出指定位置矩阵，使用上和普通二维数组一致。
-		return this->tr[index];
-	}
-
-	Point operator*(Point q) {       //当右乘一个Point类时，定义为施加变换，返回一个变换后的QPoint
-		float QMatrix[3] = { (float)-reference_x,(float)-reference_y,1 };//准备点的向量
-		float QTransed[3] = { (float)reference_x,(float)reference_y,0 };//准备计算完后的点向量
-		QMatrix[0] += q.x;          //这里是加而不是赋值，包括上文准备点向量时填入了参考点相关数据
-		QMatrix[1] += q.y;          //这样做是为了满足根据某个参考点进行放缩和旋转，非原点做参考点需要进行两次移动变换，而这可以直接体现在加法上
-		float sum = 0;                //因此正好可以用向初始与最终点向量中预设移动变换的方式简化指定参考点变换。
-		for (int i = 0; i < 3; ++i) { //矩阵乘法
-			sum = 0;
-			for (int j = 0; j < 3; ++j) {
-				sum += this->tr[i][j] * QMatrix[j];
-			}
-			QTransed[i] += sum;
-		}
-		q.rx() = (int)QTransed[0] + 0.5;//将得到的结果取出，取整，修改QPoint并返回
-		q.ry() = (int)QTransed[1] + 0.5;
-		return q;
-	}
-
-	transMatrix operator*(transMatrix t) {  //当右乘同类矩阵时，进行普通矩阵乘法，但要考虑统一参考点
-		float sum = 0;
-		bool differRefer = false;
-		transMatrix temp(t.reference_x, t.reference_y);//将最终返回的类中填入右侧变换矩阵的参考点，因为右侧矩阵可能最终与点类相乘
-		if (t.reference_y != reference_y || t.reference_x != reference_x) {   //如果参考点不同，需要做参考点统一
-			differRefer = true;
-			t.tr[0][2] -= reference_x;   //进行移动变换 相当于原先矩阵与点相乘时，参照点在乘法中被处理，而此处没有直接与点相乘
-			t.tr[1][2] -= reference_y;   //因此参考矩阵乘法结合律定义,先对右矩阵乘移动矩阵，再对计算结果乘移动矩阵。这里直接简化为对应位置加法。
-		}
-		for (int i = 0; i < 3; ++i) {  //普通矩阵运算
-			for (int j = 0; j < 3; ++j) {
-				sum = 0;
-				for (int k = 0; k < 3; ++k) {
-					sum += this->tr[i][k] * t.tr[k][j];
-				}
-				temp[i][j] = sum;
-			}
-		}
-		if (differRefer) {  //进行移动变换
-			temp.tr[0][2] += reference_x;
-			temp.tr[1][2] += reference_y;
-		}
-		return temp;
-	}
-};
-
-// Bezier曲线
-class Bezier {
-private:
-	vector<vector<int>> const* brush;
-protected:
-	QPen& _pen;
-	QPainter& painter;
-	vector<point2d> controlPoints;
-public:
-	Bezier(int penWidth, QPainter& p, const QVector<QPoint>& points, QPen pen)
-		: _pen(pen), painter(p) {
-		for (int i = 0; i < points.size(); ++i) {
-			controlPoints.emplace_back(double(points[i].x()), double(points[i].y()));
-		}
-	}
-	point2d recursive_bezier(const std::vector<point2d>& control_points, double t)
-	{
-		// Casteljau
-		int n = control_points.size();
-		if (n == 1) return control_points[0];
-		std::vector<point2d> res;
-		for (int i = 0; i < n - 1; ++i) {
-			res.emplace_back((1 - t) * control_points[i].x + t * control_points[i + 1].x, (1 - t) * control_points[i].y + t * control_points[i + 1].y);
-		}
-		return recursive_bezier(res, t);
-	}
-
-	void drawBezier()
-	{
-		if (controlPoints.size() < 2) return;
-
-		const int precision = 100; // 曲线精度
-		QVector<QPointF> curvePoints;
-
-		for (int i = 0; i <= precision; ++i) {
-			double t = i / double(precision);
-			double x = 0.0;
-			double y = 0.0;
-			int n = controlPoints.size() - 1;
-			for (int j = 0; j <= n; ++j) {
-				double binomial_coeff = combination(n, j) * std::pow(t, j) * std::pow(1 - t, n - j);
-				x += binomial_coeff * controlPoints[j].x;
-				y += binomial_coeff * controlPoints[j].y;
-			}
-			curvePoints.append(QPointF(x, y));
-		}
-
-		QPen originalPen = painter.pen();
-		painter.setPen(_pen);
-		for (int i = 0; i < curvePoints.size() - 1; ++i) {
-			painter.drawLine(curvePoints[i], curvePoints[i + 1]);
-		}
-		painter.setPen(originalPen);
-	}
-	inline int combination(int n, int k) {
-		if (k == 0 || k == n) return 1;
-		return combination(n - 1, k - 1) + combination(n - 1, k);
-	}
-};
-
-// B样曲线
-class Bspline
-{
-private:
-	vector<point2d> controlPoints;
-	int k_step; // k阶 需要自定义
-	int n; // n + 1控制点（屏幕上画出）
-	double* U; // 节点向量
-	QPen& _pen;
-	QPainter& painter;
-public:
-	Bspline(QPainter& p, const QVector<QPoint>& points, int k, QPen pen) :  _pen(pen), painter(p)
-	{
-		painter.setPen(_pen);
-		for (int i = 0; i < points.size(); ++i) {
-			controlPoints.emplace_back(double(points[i].x()), double(points[i].y()));
-		}
-		k_step = k;
-		n = controlPoints.size() - 1; // n + 1 控制点
-		U = nullptr;
-	}
-	double coefficient(int i, int r, double u)
-	{
-		if (fabs(U[i + k_step - r] - U[i]) <= 1e-7)
-			return 0;
-		else
-		{
-			return (u - U[i]) / (U[i + k_step - r] - U[i]);
-		}
-	}
-	double DeBoor_Cox_X(int i, int r, double u)
-	{
-		if (r == 0)
-		{
-			return controlPoints[i].x;
-		}
-		else
-		{
-			return coefficient(i, r, u) * DeBoor_Cox_X(i, r - 1, u) + (1 - coefficient(i, r, u)) * DeBoor_Cox_X(i - 1, r - 1, u);
-		}
-	}
-	double DeBoor_Cox_Y(int i, int r, double u)
-	{
-		if (r == 0)
-		{
-			return controlPoints[i].y;
-		}
-		else
-		{
-			return coefficient(i, r, u) * DeBoor_Cox_Y(i, r - 1, u) + (1 - coefficient(i, r, u)) * DeBoor_Cox_Y(i - 1, r - 1, u);
-		}
-	}
-	void drawBspline()
-	{
-		U = new double[n + k_step + 2];
-		for (int i = 0; i < n + k_step + 2; ++i) {
-			U[i] = i; // 均匀分布 所有控制点的权重求和为1
-		}
-
-		double step = 0.0005;
-		for (int i = k_step - 1; i < n + 1; ++i) {
-			for (double theta_u = U[i]; theta_u < U[i + 1]; theta_u += step) {
-				int temp_x = round(DeBoor_Cox_X(i, k_step - 1, theta_u));
-				int temp_y = round(DeBoor_Cox_Y(i, k_step - 1, theta_u));
-				painter.drawPoint(temp_x, temp_y); // 使用QPainter绘制点
-			}
-		}
-		delete[] U;
-	}
-};
 
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
@@ -589,7 +97,6 @@ private:
 	vector<int> k_steps;	// 每条Bspline曲线的阶数
 	int isOnPoint2 = -1;	// 用于跟踪当前选中的控制点
 	int SelectedBspline = -1;
-
 
 protected:
 	// 重写绘制事件
@@ -724,15 +231,15 @@ protected:
 		// 绘制当前正在创建的Bspline曲线
 		if (mode == BsplineMode && currentBsplineControlPoints.size() > 1) {
 			QPen bsplinePen(currentLineColor, lineWidth);
-			
-			Bspline bspline(painter, currentBsplineControlPoints.toVector(),last_k, bsplinePen);
+
+			Bspline bspline(painter, currentBsplineControlPoints.toVector(), last_k, bsplinePen);
 			bspline.drawBspline();
 		}
 
 		// 绘制当前正在创建的Bspline控制点
 		if (mode == BsplineMode) {
 			painter.setPen(Qt::blue);
-			for (const QPoint& point :currentBsplineControlPoints){
+			for (const QPoint& point : currentBsplineControlPoints) {
 				painter.drawEllipse(point, 5, 5);
 			}
 		}
@@ -827,7 +334,6 @@ protected:
 					drawMidpointArc(painter, center, radius, 0, endAngle);
 				}
 			}
-
 		}
 	}
 
@@ -854,71 +360,6 @@ protected:
 			MAP[x][y].setColor(painter.pen().color());
 		}
 	};
-
-	// 绘制预览实线(不更新MAP)
-	void drawPreviewSolid(QPainter& painter, QPoint p1, QPoint p2)
-	{
-		int x1 = p1.x();
-		int y1 = p1.y();
-		int x2 = p2.x();
-		int y2 = p2.y();
-		int dx = abs(x2 - x1);
-		int dy = abs(y2 - y1);
-		int sx = (x1 < x2) ? 1 : -1;
-		int sy = (y1 < y2) ? 1 : -1;
-		int err = dx - dy;
-
-		while (x1 != x2 || y1 != y2) {
-			drawPixel(x1, y1, painter);
-			int e2 = 2 * err;
-			if (e2 > -dy) {
-				err -= dy;
-				x1 += sx;
-			}
-			if (e2 < dx) {
-				err += dx;
-				y1 += sy;
-			}
-		}
-	}
-
-	// 绘制预览虚线(不更新MAP)
-	void drawPreviewDash(QPainter& painter, QPoint p1, QPoint p2)
-	{
-		int x1 = p1.x();
-		int y1 = p1.y();
-		int x2 = p2.x();
-		int y2 = p2.y();
-		int dx = abs(x2 - x1);
-		int dy = abs(y2 - y1);
-		int sx = (x1 < x2) ? 1 : -1;
-		int sy = (y1 < y2) ? 1 : -1;
-		int err = dx - dy;
-
-		int dashLength = 8;   // 每段虚线的长度
-		int gapLength = 8;    // 每段空白的长度
-		int totalLength = dashLength + gapLength;  // 总周期长度
-		int stepCount = 0;    // 计数步数，用于决定是否绘制
-
-		while (x1 != x2 || y1 != y2) {
-			// 只在虚线的部分绘制点
-			if (stepCount % totalLength < dashLength) {
-				painter.drawPoint(x1, y1);
-			}
-
-			int e2 = 2 * err;
-			if (e2 > -dy) {
-				err -= dy;
-				x1 += sx;
-			}
-			if (e2 < dx) {
-				err += dx;
-				y1 += sy;
-			}
-
-			stepCount++;  // 增加步数计数器
-		}
-	}
 
 	// DDA 算法实现
 	void drawDDALine(QPainter& painter, QPoint p1, QPoint p2) {
@@ -1672,7 +1113,7 @@ protected:
 			else if (mode == BezierMode && SelectedBezier != -1 && SelectedPoint != -1 && ctr_or_not) {
 				all_beziers[SelectedBezier][SelectedPoint] = event->pos();// 更新所有Bezier曲线控制点位置
 			}
-			else if(mode == BsplineMode && isOnPoint2 != -1 && !ctr_or_not){
+			else if (mode == BsplineMode && isOnPoint2 != -1 && !ctr_or_not) {
 				currentBsplineControlPoints[isOnPoint2] = event->pos(); // 更新当前Bezier曲线控制点位置
 			}
 			else if (mode == BsplineMode && SelectedBspline != -1 && SelectedPoint != -1 && ctr_or_not) {
@@ -1851,8 +1292,9 @@ protected:
 				arcs.append(Arc(center, radius, startAngle, endAngle, lineWidth, currentLineColor));
 				counter = 0;
 			}
-			else if (mode == TrimMode && !clip_algo == CropPolygon) {
+			else if (mode == TrimMode && clip_algo == SutherlandTrim || mode == TrimMode && clip_algo == MidTrim) {
 				// drawingrect = false;
+				qDebug() << "Trim the line.\n";
 				clipEndPoint = event->pos();
 				// 确定裁剪矩形的左上、右下两个顶点
 				double xmin = min(clipStartPoint.x(), clipEndPoint.x());
@@ -2139,7 +1581,6 @@ public:
 		modeComboBox->addItem("Bezier Curve", BezierMode);
 		modeComboBox->addItem("Bspline Curve", BsplineMode);
 
-
 		// 创建下拉框并添加算法选项
 		line_algorithmComboBox = new QComboBox(this);
 		line_algorithmComboBox->addItem("Midpoint", Midpoint);
@@ -2243,10 +1684,10 @@ public:
 				// 弹出对话框，输入要绘制的阶数
 				bool ok;
 				int k_step = QInputDialog::getInt(this, tr("Set Bspline steps"), tr("Enter steps:"), 3, 1, 10, 1, &ok);
-				if(ok)
+				if (ok)
 					shapeDrawer->setk_step(k_step);
 			}
-		});
+			});
 
 		connect(clearButton, &QPushButton::clicked, shapeDrawer, &ShapeDrawer::Clear);
 
@@ -2256,26 +1697,6 @@ public:
 		setFixedSize(1000, 600);
 	}
 };
-
-void initMAP(vector<vector<pointData>>& MAP) {
-	for (int i = 0; i < 1000; i++) {
-		vector<pointData> row;
-		MAP.push_back(row);
-		for (int j = 0; j < 1000; j++) {
-			//对每一行中的每一列进行添加点
-			pointData point(QPoint(i, j), Qt::white);
-			MAP[i].push_back(point);
-		}
-	}
-}
-
-void clearMAP(vector<vector<pointData>>& MAP) {
-	for (int i = 0; i < 800; i++) {
-		for (int j = 0; j < 550; j++) {
-			MAP[i][j].setColor(Qt::white);
-		}
-	}
-}
 
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);

@@ -1,10 +1,10 @@
 #include "stdafx.h"
 #include "Qt_test.h"
 
-Qt_test::Qt_test(QWidget *parent)
-    : QMainWindow(parent)
+Qt_test::Qt_test(QWidget* parent)
+	: QMainWindow(parent)
 {
-    ui.setupUi(this);
+	ui.setupUi(this);
 }
 
 Qt_test::~Qt_test()

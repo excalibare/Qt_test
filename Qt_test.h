@@ -5,12 +5,12 @@
 
 class Qt_test : public QMainWindow
 {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    Qt_test(QWidget *parent = nullptr);
-    ~Qt_test();
+	Qt_test(QWidget* parent = nullptr);
+	~Qt_test();
 
 private:
-    Ui::Qt_testClass ui;
+	Ui::Qt_testClass ui;
 };
