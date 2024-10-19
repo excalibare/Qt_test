@@ -56,8 +56,9 @@ public:
 // 一部分的 函数声明
 void initMAP(vector<vector<pointData>>& MAP);
 void clearMAP(vector<vector<pointData>>& MAP);
+void drawPixel(int x, int y, QPainter& painter);
 
-// 功能类型：直线、圆弧、多边形、填充、裁剪
+// 功能类型：直线、圆弧、多边形、填充、裁剪、变换、曲线
 enum DrawMode {
 	LineMode,
 	ArcMode,
@@ -66,7 +67,8 @@ enum DrawMode {
 	FillMode,
 	TrimMode,
 	TransMode,
-	BezierMode
+	BezierMode,
+	BsplineMode,
 };
 
 // 线段绘制算法
@@ -443,6 +445,77 @@ public:
 	}
 };
 
+// B样曲线
+class Bspline
+{
+private:
+	vector<point2d> controlPoints;
+	int k_step; // k阶 需要自定义
+	int n; // n + 1控制点（屏幕上画出）
+	double* U; // 节点向量
+	QPen& _pen;
+	QPainter& painter;
+public:
+	Bspline(QPainter& p, const QVector<QPoint>& points, int k, QPen pen) :  _pen(pen), painter(p)
+	{
+		painter.setPen(_pen);
+		for (int i = 0; i < points.size(); ++i) {
+			controlPoints.emplace_back(double(points[i].x()), double(points[i].y()));
+		}
+		k_step = k;
+		n = controlPoints.size() - 1; // n + 1 控制点
+		U = nullptr;
+	}
+	double coefficient(int i, int r, double u)
+	{
+		if (fabs(U[i + k_step - r] - U[i]) <= 1e-7)
+			return 0;
+		else
+		{
+			return (u - U[i]) / (U[i + k_step - r] - U[i]);
+		}
+	}
+	double DeBoor_Cox_X(int i, int r, double u)
+	{
+		if (r == 0)
+		{
+			return controlPoints[i].x;
+		}
+		else
+		{
+			return coefficient(i, r, u) * DeBoor_Cox_X(i, r - 1, u) + (1 - coefficient(i, r, u)) * DeBoor_Cox_X(i - 1, r - 1, u);
+		}
+	}
+	double DeBoor_Cox_Y(int i, int r, double u)
+	{
+		if (r == 0)
+		{
+			return controlPoints[i].y;
+		}
+		else
+		{
+			return coefficient(i, r, u) * DeBoor_Cox_Y(i, r - 1, u) + (1 - coefficient(i, r, u)) * DeBoor_Cox_Y(i - 1, r - 1, u);
+		}
+	}
+	void drawBspline()
+	{
+		U = new double[n + k_step + 2];
+		for (int i = 0; i < n + k_step + 2; ++i) {
+			U[i] = i; // 均匀分布 所有控制点的权重求和为1
+		}
+
+		double step = 0.0005;
+		for (int i = k_step - 1; i < n + 1; ++i) {
+			for (double theta_u = U[i]; theta_u < U[i + 1]; theta_u += step) {
+				int temp_x = round(DeBoor_Cox_X(i, k_step - 1, theta_u));
+				int temp_y = round(DeBoor_Cox_Y(i, k_step - 1, theta_u));
+				painter.drawPoint(temp_x, temp_y); // 使用QPainter绘制点
+			}
+		}
+		delete[] U;
+	}
+};
+
 class ShapeDrawer : public QWidget {
 	// Q_OBJECT;
 private:
@@ -453,10 +526,11 @@ private:
 	bool hasStartPoint = false; // 是否有起点
 	bool drawing = false;       // 是否正在绘制（用来控制鼠标释放时的动作）
 	QColor currentLineColor = Qt::black;    // 当前线条颜色
-	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形 4.种子点 5.Bezier
+	QVector<int> shape;          // 控制图形的重绘顺序，防止顺序错乱 1.直线 2.圆弧或圆 3.多边形 4.种子点 5.Bezier 6.Bspline
 	float XL = 0, XR = 800, YB = 0, YT = 550;
 	Point _begin = Point(0, 0); // 拖拽的参考坐标，方便计算位移
-	QLabel* coordLabel;
+	bool ctr_or_not = false;	// Bezier与Bspline是否移动控制点
+	QLabel* coordLabel;			// 鼠标按下时显示实时位置的组件
 
 	// 直线段
 	QPoint startPoint;          // 线段的起点
@@ -503,19 +577,26 @@ private:
 	QRect* transRectTag = new QRect(100, 100, 20, 20);             //标签矩形
 
 	// Bezier曲线
-	int isOnPoint1; // 是否在控制点上Bezier
 	QVector<QVector<QPoint>> all_beziers;	// 所有的Bezier曲线
-	QVector<QPoint> bezierControlPoints;	// 暂存的当前Bezier曲线控制点
-	int selectedControlPoint = -1; // 用于跟踪当前选中的控制点
+	QVector<QPoint> currentBezierControlPoints;	// 暂存的当前Bezier曲线控制点
+	int isOnPoint1 = -1;	// 用于跟踪当前选中的控制点
 	int SelectedBezier = -1, SelectedPoint = -1;
-	bool ctr_or_not = false;
+
+	// Bspline曲线
+	QVector<QVector<QPoint>> all_bsplines;	// 所有的Bspline曲线
+	QVector<QPoint> currentBsplineControlPoints;	// 当前Bspline曲线的控制点容器
+	int last_k = 3;			// 当前Bspline曲线的阶数
+	vector<int> k_steps;	// 每条Bspline曲线的阶数
+	int isOnPoint2 = -1;	// 用于跟踪当前选中的控制点
+	int SelectedBspline = -1;
+
 
 protected:
 	// 重写绘制事件
 	void paintEvent(QPaintEvent* event) override
 	{
 		// 各类图形的计数器，控制从vector中取出的顺序
-		int i1 = 0, i2 = 0, i3 = 0, i4 = 0, i5 = 0;
+		int i1 = 0, i2 = 0, i3 = 0, i4 = 0, i5 = 0, i6 = 0;
 		clearMAP(MAP);
 		QPainter painter(this);
 
@@ -599,19 +680,59 @@ protected:
 					bezier.drawBezier();
 				}
 			}
+			// 重绘Bspline曲线
+			else if (shape.at(c) == 6 && all_bsplines.size() > i6) {
+				int temp_k = k_steps[i6];
+				painter.setPen(Qt::blue);
+				const QVector<QPoint>& ControlPoints = all_bsplines.at(i6++);
+				// 绘制Bspline控制点
+				if (ctr_or_not) {
+					for (const QPoint& point : ControlPoints) {
+						painter.drawEllipse(point, 5, 5);
+					}
+					for (int j = 0; j < ControlPoints.size() - 1; ++j) {
+						// 设置虚线样式
+						QPen dashedPen(Qt::blue, 1);
+						painter.setPen(dashedPen);
+						drawPreviewDash(painter, ControlPoints.at(j), ControlPoints.at(j + 1));
+					}
+				}
+				// 绘制Bspline曲线
+				if (ControlPoints.size() > 1) {
+					QPen bsplinePen(currentLineColor, lineWidth);
+					Bspline bspline(painter, ControlPoints.toVector(), temp_k, bsplinePen);
+					bspline.drawBspline();
+				}
+			}
 		}
 
 		// 绘制当前正在创建的Bezier曲线
-		if (mode == BezierMode && bezierControlPoints.size() > 1) {
+		if (mode == BezierMode && currentBezierControlPoints.size() > 1) {
 			QPen bezierPen(currentLineColor, lineWidth);
-			Bezier bezier(1, painter, bezierControlPoints.toVector(), bezierPen);
+			Bezier bezier(1, painter, currentBezierControlPoints.toVector(), bezierPen);
 			bezier.drawBezier();
 		}
 
 		// 绘制当前正在创建的Beizer控制点
 		if (mode == BezierMode) {
 			painter.setPen(Qt::blue);
-			for (const QPoint& point : bezierControlPoints) {
+			for (const QPoint& point : currentBezierControlPoints) {
+				painter.drawEllipse(point, 5, 5);
+			}
+		}
+
+		// 绘制当前正在创建的Bspline曲线
+		if (mode == BsplineMode && currentBsplineControlPoints.size() > 1) {
+			QPen bsplinePen(currentLineColor, lineWidth);
+			
+			Bspline bspline(painter, currentBsplineControlPoints.toVector(),last_k, bsplinePen);
+			bspline.drawBspline();
+		}
+
+		// 绘制当前正在创建的Bspline控制点
+		if (mode == BsplineMode) {
+			painter.setPen(Qt::blue);
+			for (const QPoint& point :currentBsplineControlPoints){
 				painter.drawEllipse(point, 5, 5);
 			}
 		}
@@ -1545,11 +1666,17 @@ protected:
 				// 放里面当然用不了重绘啦
 				clipEndPoint = event->pos();
 			}
-			else if (mode == BezierMode && selectedControlPoint != -1 && !ctr_or_not) {
-				bezierControlPoints[selectedControlPoint] = event->pos(); // 更新控制点位置
+			else if (mode == BezierMode && isOnPoint1 != -1 && !ctr_or_not) {
+				currentBezierControlPoints[isOnPoint1] = event->pos(); // 更新当前Bezier曲线控制点位置
 			}
 			else if (mode == BezierMode && SelectedBezier != -1 && SelectedPoint != -1 && ctr_or_not) {
-				all_beziers[SelectedBezier][SelectedPoint] = event->pos();// 更新控制点位置
+				all_beziers[SelectedBezier][SelectedPoint] = event->pos();// 更新所有Bezier曲线控制点位置
+			}
+			else if(mode == BsplineMode && isOnPoint2 != -1 && !ctr_or_not){
+				currentBsplineControlPoints[isOnPoint2] = event->pos(); // 更新当前Bezier曲线控制点位置
+			}
+			else if (mode == BsplineMode && SelectedBspline != -1 && SelectedPoint != -1 && ctr_or_not) {
+				all_bsplines[SelectedBspline][SelectedPoint] = event->pos();// 更新所有Bezier曲线控制点位置
 			}
 
 			update(); // 触发重绘
@@ -1624,17 +1751,17 @@ protected:
 				QPoint pos = event->pos();
 				// 检查是否点击在已有的控制点附近
 				bool pointSelected = false;
-				for (int i = 0; i < bezierControlPoints.size(); ++i) {
-					if ((pos - bezierControlPoints[i]).manhattanLength() < 10) {
-						selectedControlPoint = i;  // 选择已有的点进行拖动
+				for (int i = 0; i < currentBezierControlPoints.size(); ++i) {
+					if ((pos - currentBezierControlPoints[i]).manhattanLength() < 10) {
+						isOnPoint1 = i;  // 选择已有的点进行拖动
 						pointSelected = true;
 						break;
 					}
 				}
 				if (!pointSelected) {
 					// 添加新的控制点
-					bezierControlPoints.append(pos);
-					selectedControlPoint = -1; // 不选中新点
+					currentBezierControlPoints.append(pos);
+					isOnPoint1 = -1; // 不选中新点
 				}
 				update(); // 更新绘图
 			}
@@ -1654,6 +1781,44 @@ protected:
 				}
 				if (!pointSelected) {
 					SelectedBezier = -1; // 不选中新点
+					SelectedPoint = -1;
+				}
+			}
+			else if (mode == BsplineMode && !ctr_or_not) {
+				QPoint pos = event->pos();
+				// 检查已有绘制点
+				bool pointSelected = false;
+				for (int i = 0; i < currentBsplineControlPoints.size(); ++i) {
+					if ((pos - currentBsplineControlPoints[i]).manhattanLength() < 10) {
+						isOnPoint2 = i;  // 选择已有的点进行拖动
+						pointSelected = true;
+						break;
+					}
+				}
+				if (!pointSelected) {
+					// 添加新的控制点
+					currentBsplineControlPoints.append(pos);
+					qDebug() << "x:" << event->pos().x() << "y:" << event->pos().y() << "\n";
+					isOnPoint2 = -1; // 不选中新点
+				}
+				update(); // 更新绘图
+			}
+			else if (mode == BsplineMode && ctr_or_not) {
+				QPoint pos = event->pos();
+				// 检查是否点击在已有的控制点附近
+				bool pointSelected = false;
+				for (int i = 0; i < all_bsplines.size(); ++i) {
+					for (int j = 0; j < all_bsplines[i].size(); j++) {
+						if ((pos - all_bsplines[i][j]).manhattanLength() < 10) {
+							SelectedBspline = i;  // 选择已有的点进行拖动
+							SelectedPoint = j;
+							pointSelected = true;
+							break;
+						}
+					}
+				}
+				if (!pointSelected) {
+					SelectedBspline = -1; // 不选中新点
 					SelectedPoint = -1;
 				}
 			}
@@ -1712,9 +1877,11 @@ protected:
 				iscomfirm = true;
 			}
 			else if (mode == BezierMode) {
-				selectedControlPoint = -1;  // Deselect control point
+				isOnPoint1 = -1;  // Deselect control point
 			}
-
+			else if (mode == BsplineMode) {
+				isOnPoint2 = -1;  // Deselect control point
+			}
 
 			drawing = true;         // 绘制完成
 			update();               // 触发重绘
@@ -1772,11 +1939,19 @@ protected:
 	// 处理按键事件
 	void keyPressEvent(QKeyEvent* event) override {
 		if (mode == BezierMode && event->key() == Qt::Key_Return) {
-			all_beziers.append(bezierControlPoints);
+			all_beziers.append(currentBezierControlPoints);
 			// qDebug() << "all_beziers's size: " << all_beziers.size() << "<<\n";
 			shape.append(5);
 			// qDebug() << "shape's size: " << shape.size() << "<<\n";
-			bezierControlPoints.clear();
+			currentBezierControlPoints.clear();
+		}
+		if (mode == BsplineMode && event->key() == Qt::Key_Return) {
+			all_bsplines.append(currentBsplineControlPoints);
+			// qDebug() << "all_bsplines's size: " << all_bsplines.size() << "<<\n";
+			shape.append(6);
+			// qDebug() << "shape's size: " << shape.size() << "<<\n";
+			k_steps.push_back(last_k);
+			currentBsplineControlPoints.clear();
 		}
 		if (event->key() == Qt::Key_Control) {
 			ctr_or_not = true;
@@ -1788,18 +1963,27 @@ protected:
 				{
 				case 1:
 					lines.pop_back();
+					qDebug() << "Cancel a line.\n";
 					break;
 				case 2:
 					arcs.pop_back();
+					qDebug() << "Cancel an arc.\n";
 					break;
 				case 3:
 					polygons.pop_back();
+					qDebug() << "Cancel a polygon.\n";
 					break;
 				case 4:
 					fills.pop_back();
+					qDebug() << "Cancel a fill area.\n";
 					break;
 				case 5:
 					all_beziers.pop_back();
+					qDebug() << "Cancel a Bezier line.\n";
+					break;
+				case 6:
+					all_bsplines.pop_back();
+					qDebug() << "Cancel a B-Spline.\n";
 					break;
 				}
 				shape.pop_back();
@@ -1898,6 +2082,13 @@ public:
 		update();  // 触发重绘
 	}
 
+	// 新增：设置B样曲线阶数
+	void setk_step(int k_value) {
+		last_k = k_value;
+		//k_steps.push_back(k_value);
+		update();
+	}
+
 	// 新增：清空画布功能
 	void Clear()
 	{
@@ -1909,7 +2100,10 @@ public:
 		stack.clear();
 		_cropPolygon.clear();
 		all_beziers.clear();
-		bezierControlPoints.clear();
+		currentBezierControlPoints.clear();
+		all_bsplines.clear();
+		currentBsplineControlPoints.clear();
+		k_steps.clear();
 		clearMAP(MAP);
 		update();
 	}
@@ -1943,6 +2137,7 @@ public:
 		modeComboBox->addItem("Trim", TrimMode);
 		modeComboBox->addItem("Transform", TransMode);
 		modeComboBox->addItem("Bezier Curve", BezierMode);
+		modeComboBox->addItem("Bspline Curve", BsplineMode);
 
 
 		// 创建下拉框并添加算法选项
@@ -2040,6 +2235,18 @@ public:
 				}
 			}
 			});
+
+		connect(modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) {
+			DrawMode selectedMode = static_cast<DrawMode>(modeComboBox->itemData(index).toInt());
+			shapeDrawer->setDrawMode(selectedMode);
+			if (selectedMode == BsplineMode) {
+				// 弹出对话框，输入要绘制的阶数
+				bool ok;
+				int k_step = QInputDialog::getInt(this, tr("Set Bspline steps"), tr("Enter steps:"), 3, 1, 10, 1, &ok);
+				if(ok)
+					shapeDrawer->setk_step(k_step);
+			}
+		});
 
 		connect(clearButton, &QPushButton::clicked, shapeDrawer, &ShapeDrawer::Clear);
 
